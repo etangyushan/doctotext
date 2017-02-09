@@ -1,0 +1,12 @@
+url=http://htmlcxx.sourceforge.net/
+prefix=/usr/local
+exec_prefix=${prefix}
+libdir=${exec_prefix}/lib
+includedir=${prefix}/include
+
+Name: htmlcxx
+Description: html and css apis for c++
+Version: 0.85
+Libs: -L${libdir} -lhtmlcxx -lcss_parser_pp -lcss_parser
+Cflags: -I${includedir} 
+URL: ${url}
