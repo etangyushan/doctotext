@@ -1,4 +1,5 @@
 # Object files
+./src/*.o
 *.o
 *.ko
 *.obj
