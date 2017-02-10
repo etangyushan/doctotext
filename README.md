@@ -1,0 +1,8 @@
+# doctotext
+SILVERCODERS doctotext-4.0-20140202
+
+1.Dependence lib
+mimetic-0.9.8.tar.gz
+libgsf-1.14.34.tar.xz
+wv2-0.2.3patched.tar.gz
+
