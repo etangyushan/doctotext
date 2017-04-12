@@ -216,17 +216,17 @@ endif
 	
 
 clean:
-	#rm -rf ToUnicode
-	#rm -rf ac16
-	#rm -rf ag15
-	#rm -rf ak12
-	#rm -rf aj16
-	#rm -rf libiconv
-	#rm -rf pthreads
-	#rm -rf zlib
-	#rm -rf libxml2
-	#rm -rf htmlcxx
-	#rm -rf unzip101e
-	#rm -rf wv2
-	#rm -rf libcharsetdetect
-	#rm -rf mimetic
+	@#rm -rf ToUnicode
+	@#rm -rf ac16
+	@#rm -rf ag15
+	@#rm -rf ak12
+	@#rm -rf aj16
+	@#rm -rf libiconv
+	@#rm -rf pthreads
+	@#rm -rf zlib
+	@#rm -rf libxml2
+	@#rm -rf htmlcxx
+	@#rm -rf unzip101e
+	@#rm -rf wv2
+	@#rm -rf libcharsetdetect
+	@#rm -rf mimetic
