@@ -133,6 +133,8 @@ endif
 	cp ./3rdparty/pdf_font_metrics.txt build/resources
 	cp -r doc/html doc/index.html build/doc
 	cp ChangeLog VERSION build
+	
+test:
 	$(MAKE) -C tests
 
 version.h: VERSION
