@@ -406,13 +406,23 @@ struct PlainTextExtractor::Implementation
 	bool parsePDF(PDFParser& pdf, std::string& text)
 	{
 		if (m_verbose_logging)
+		{
 			pdf.setVerboseLogging(true);
+		}
+
 		if (m_log_stream != &std::cerr)
+		{
 			pdf.setLogStream(*m_log_stream);
+		}
+
 		*m_log_stream << "Using PDF parser.\n";
+
+		//进行解析
 		text = pdf.plainText(m_formatting_style);
+
 		m_links.clear();
 		pdf.getLinks(m_links);
+
 		return pdf.error();
 	}
 
@@ -842,19 +852,41 @@ bool PlainTextExtractor::parserTypeByFileContent(const char* file_name, ParserTy
 	return parserTypeByFileContent(std::string(file_name), parser_type);
 }
 
+/**
+ * @brief 解析文件获取内容
+ *
+ * @param file_name 文件名称
+ * @param text      解析后的文件内容
+ *
+ * @return 
+ */
 bool PlainTextExtractor::processFile(const std::string& file_name, std::string& text)
 {
 	ParserType parser_type = impl->m_parser_type;
 	bool fallback = false;
-	if (parser_type == PARSER_AUTO)
-		parser_type = parserTypeByFileExtension(file_name);
+
 	if (parser_type == PARSER_AUTO)
 	{
+		//根据后缀判断文件类型
+		parser_type = parserTypeByFileExtension(file_name);
+	}
+
+	if (parser_type == PARSER_AUTO)
+	{
+		//根据内容判断文件类型
 		if (!parserTypeByFileContent(file_name, parser_type))
+		{
 			return false;
+		}
 	}
 	else
+	{
+		//根据后缀判断的类型可能不是正真的类型，需要留有后路，解析过程出错了
+		//就重新做识别，再解析一遍
 		fallback = true;
+	}
+
+	//解析文件
 	return processFile(parser_type, fallback, file_name, text);
 }
 
@@ -892,10 +924,23 @@ bool PlainTextExtractor::processFile(const char* buffer, size_t size, std::strin
 	return processFile(parser_type, fallback, buffer, size, text);
 }
 
+
+/**
+ * @brief 根据文件类型进行
+ *
+ * @param parser_type 文件类型
+ * @param fallback    二次解析标识
+ * @param file_name   文件名称
+ * @param text        文件内容
+ *
+ * @return 
+ */
 bool PlainTextExtractor::processFile(ParserType parser_type, bool fallback, const std::string& file_name, std::string& text)
 {
 	if (parser_type == PARSER_AUTO)
+	{
 		return processFile(file_name, text);
+	}
 
 	bool error = true;
 	switch (parser_type)

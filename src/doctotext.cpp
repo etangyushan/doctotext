@@ -87,6 +87,7 @@ static void help()
 
 int main(int argc, char* argv[])
 {
+	//开启这个选项需要在 Makefile 中加入 -DDEBUG 选项
 	#ifdef DEBUG
 		doctotext_init_tracing("doctotext.trace");
 	#endif
@@ -102,7 +103,9 @@ int main(int argc, char* argv[])
 
 	bool extract_metadata = false;
 
+	//设置文件的类型，PARSER_AUTO 意思是格式是未知的
 	PlainTextExtractor::ParserType parser_type = PlainTextExtractor::PARSER_AUTO;
+
 	XmlParseMode mode = PARSE_XML;
 
 	FormattingStyle options;
@@ -110,7 +113,9 @@ int main(int argc, char* argv[])
 	options.list_style.setPrefix(" * ");
 	options.url_style = URL_STYLE_UNDERSCORED;
 
+	//详细日志的开关
 	bool verbose = false;
+	//日志流
 	ofstream* log_stream = NULL;
 
 	for(int i = 1 ; i < argc ; i ++)
@@ -118,29 +123,76 @@ int main(int argc, char* argv[])
 		arg = argv[i-1];
 
 		if (arg.find("--meta", 0) != -1)
+		{
+			//文件属性信息
 			extract_metadata = true;
+		}
+
+		//判断是否指定了要解析文件的格式
 		if (arg.find("--rtf", 0) != -1)
+		{
 			parser_type = PlainTextExtractor::PARSER_RTF;
+		}
+
 		if (arg.find("--odfxml", 0) != -1)
+		{
+			//odf 格式文件
 			parser_type = PlainTextExtractor::PARSER_ODFXML;
+		}
+
 		if (arg.find("--odf", 0) != -1 || arg.find("ooxml", 0) != -1)
+		{
+			//office2007 格式文件
 			parser_type = PlainTextExtractor::PARSER_ODF_OOXML;
-		if (arg.find("--xls", 0) != -1)
-			parser_type = PlainTextExtractor::PARSER_XLS;
-		if (arg.find("--xlsb", 0) != -1)
-			parser_type = PlainTextExtractor::PARSER_XLSB;
-		if (arg.find("--iwork", 0) != -1)
-			parser_type = PlainTextExtractor::PARSER_IWORK;
+		}
+
 		if (arg.find("--ppt", 0) != -1)
+		{
+			//office2003 powerpoint 格式文件
 			parser_type = PlainTextExtractor::PARSER_PPT;
+		}
+
 		if (arg.find("--doc", 0) != -1)
+		{
+			//office2003 word 格式文件
 			parser_type = PlainTextExtractor::PARSER_DOC;
+		}
+
+		if (arg.find("--xls", 0) != -1)
+		{
+			//office2003 excel 格式文件
+			parser_type = PlainTextExtractor::PARSER_XLS;
+		}
+
+		if (arg.find("--xlsb", 0) != -1)
+		{
+			//excel 二进制类型的工作簿
+			parser_type = PlainTextExtractor::PARSER_XLSB;
+		}
+
+		if (arg.find("--iwork", 0) != -1)
+		{
+			//苹果办公格式文件
+			parser_type = PlainTextExtractor::PARSER_IWORK;
+		}
+
 		if (arg.find("--html", 0) != -1)
+		{
+			//html 格式文件
 			parser_type = PlainTextExtractor::PARSER_HTML;
+		}
+
 		if (arg.find("--pdf", 0) != -1)
+		{
+			//pdf 格式文件
 			parser_type = PlainTextExtractor::PARSER_PDF;
+		}
+
 		if (arg.find("--eml", 0) != -1)
+		{
+			//邮件格式文件
 			parser_type = PlainTextExtractor::PARSER_EML;
+		}
 
 		if(arg.find("table-style=", 0) != -1)
 		{
@@ -157,6 +209,7 @@ int main(int argc, char* argv[])
 				options.table_style = TABLE_STYLE_TABLE_LOOK;
 			}
 		}
+
 		if(arg.find("url-style=", 0) != -1)
 		{
 			if(arg.find("text-only", arg.find("url-style=", 0) + 10) != -1)
@@ -172,34 +225,69 @@ int main(int argc, char* argv[])
 				options.url_style = URL_STYLE_UNDERSCORED;
 			}
 		}
+
 		if(arg.find("list-style-prefix=", 0) != -1)
 		{
 			options.list_style.setPrefix(arg.substr(arg.find("list-style-prefix=", 0) + 18));
 		}
+
 		if (arg.find("fix-xml", 0) != std::string::npos)
+		{
+			//是否尝试修复损坏的 xml 文件
 			mode = FIX_XML;
+		}
+
 		if (arg.find("strip-xml", 0) != std::string::npos)
+		{
 			mode = STRIP_XML;
+		}
+
+		//获取解压缩的命令
 		if (arg.find("unzip-cmd=", 0) != -1)
 		{
 			DocToTextUnzip::setUnzipCommand(arg.substr(arg.find("unzip-cmd=", 0) + 10));
 		}
+
+		//获取详细日志开关
 		if (arg.find("verbose", 0) != std::string::npos)
+		{
 			verbose = true;
+		}
+
+		//获取日志输出文件名称
 		if (arg.find("log-file=", 0) != std::string::npos)
+		{
 			log_stream = new ofstream(arg.substr(arg.find("log-file=", 0) + 9).c_str());
+		}
 	}
 
+	//创建文件解析器
 	PlainTextExtractor extractor(parser_type);
+
+	//设置详细日志开关
 	if (verbose)
+	{
 		extractor.setVerboseLogging(true);
+	}
+
+	//设置日志输出文件名称F
 	if (log_stream != NULL)
+	{
 		extractor.setLogStream(*log_stream);
+	}
+
+	//设置 xml 格式解析模式
 	if (mode != PARSE_XML)
+	{
 		extractor.setXmlParseMode(mode);
+	}
+
+	//
 	extractor.setFormattingStyle(options);
+
 	if (extract_metadata)
 	{
+		//解析文件属性
 		Metadata meta;
 		if (!extractor.extractMetadata(argv[argc - 1], meta))
 		{
@@ -216,13 +304,38 @@ int main(int argc, char* argv[])
 	}
 	else
 	{
+		//解析文件内容,
+        #warning NOTCE: 注意下面的所有 printf 语句不要做任何修改，修改后会造成运行自动化测试报错: make test
+        /*
+         * 原因是解析出来的内容和 tests目录下面 *.out 中的内容不相符，
+         * 例如: 解析 tests/1.doc.out 最终结果的内容就是现在下面 printf 所打印输出的内容格式，
+         * 从可以 tests/Makefile 中看到，在测试的过程中是通过 diff 命令比较，也就是通过比较 1.doc
+         * 的解析结果内容和 1.doc.out 内容的是否相同来判断程序是否正常运行的
+         */
+
 		string text;
 		if (!extractor.processFile(argv[argc - 1], text))
 		{
 			(log_stream != NULL ? *log_stream : cerr) << "Error processing file " << argv[argc - 1] << ".\n";
 			return EXIT_FAILURE;
 		}
+
+		//打印文件内容
 		printf("%s\n", text.c_str());
+
+		/*
+		 *  解析 link 信息
+		 *
+		 * 	例如：文件 example.html 内容如下
+		 * 	"text before link <a href="target">link</a> text after link"
+		 *  内容中包含一个 link， 我们使用 URL_STYLE_TEXT_ONLY 类型解析后的结果是
+		 *  "text before link link text after link".
+		 *  我们还获取到以下一些值：
+		 *  调用 getLinkUrl() 返回: "target".
+		 *  调用 getLinkText() 返回:"link".
+		 *  调用	getLinkTextSize() 返回: 4 (因为 "link" 是 4 个字节).
+		 *  调用 getLinkTextPosition() 返回: 17 (因为 "text before link " 是 17 个字节).
+		 */
 		std::vector<Link> links;
 		extractor.getParsedLinks(links);
 		if (links.size() > 0)
@@ -233,6 +346,8 @@ int main(int argc, char* argv[])
 				printf("%s @ index = %d length = %d\n", links[i].getLinkUrl(), links[i].getLinkTextPosition(), strlen(links[i].getLinkText()));
 			}
 		}
+
+		//解析附件，这个现在只有 eml 类型的实现
 		std::vector<Attachment> attachments;
 		extractor.getAttachments(attachments);
 		if (attachments.size() > 0)
@@ -244,15 +359,20 @@ int main(int argc, char* argv[])
 				std::map<std::string, Variant> variables = attachments[i].getFields();
 				for (std::map<std::string, Variant>::iterator it = variables.begin(); it != variables.end(); ++it)
 				{
-					#warning TODO: If Content-ID is not present in the file, mimetic generates it... and test/Makefile always goes wrong.\
-					Maybe we should skip this field?
+					 //源码中很多的 warning TODO 是没有完成的功能需要后续进行完善
+                     #warning TODO:  If Content-ID is not present in the file, mimetic generates it... \
+					 and test/Makefile always goes wrong.Maybe we should skip this field?
 					if (it->first != "Content-ID")
+					{
 						printf("field: %s, value: %s\n", it->first.c_str(), it->second.getString());
+					}
 				}
 			}
 		}
 	}
 	if (log_stream != NULL)
+	{
 		delete log_stream;
+	}
 	return EXIT_SUCCESS;
 }
