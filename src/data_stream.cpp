@@ -57,7 +57,9 @@ FileStream::FileStream(const std::string& file_name)
 	catch (std::bad_alloc& ba)
 	{
 		if (impl)
+		{
 			delete impl;
+		}
 		impl = NULL;
 		throw;
 	}
@@ -76,21 +78,34 @@ FileStream::~FileStream()
 bool FileStream::open()
 {
 	if (impl->m_opened)
+	{
 		return true;
+	}
+
 	impl->m_file = fopen(impl->m_file_name.c_str(), "rb");
+
 	if (impl->m_file != NULL)
+	{
 		impl->m_opened = true;
+	}
+
 	return impl->m_opened;
 }
 
 bool FileStream::close()
 {
 	if (!impl->m_opened)
+	{
 		return true;
+	}
+
 	if (impl->m_file)
+	{
 		fclose(impl->m_file);
+	}
 	impl->m_opened = false;
 	impl->m_file = NULL;
+
 	return true;
 }
 

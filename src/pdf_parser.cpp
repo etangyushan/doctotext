@@ -7702,12 +7702,15 @@ void PDFParser::getLinks(std::vector<Link>& links)
 std::string PDFParser::plainText(const FormattingStyle& formatting)
 {
 	std::string text;
+
+	//打开文件获取文件原始内容
 	if (!impl->m_data_stream->open())
 	{
-		*impl->m_log_stream << "Cant open " + impl->m_data_stream->name() + " for reading\n";
+		*impl->m_log_stream << "Can`t open " + impl->m_data_stream->name() + " for reading\n";
 		impl->m_error = true;
 		return text;
 	}
+
 	try
 	{
 		Implementation::PDFReader pdf_reader(impl->m_data_stream);
@@ -7729,6 +7732,7 @@ std::string PDFParser::plainText(const FormattingStyle& formatting)
 		impl->m_data_stream->close();
 		return text;
 	}
+
 	impl->m_data_stream->close();
 	return text;
 }

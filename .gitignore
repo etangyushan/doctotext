@@ -32,3 +32,8 @@
 # Debug files
 *.dSYM/
 *.su
+
+#tmp file
+build
+doc
+version.h

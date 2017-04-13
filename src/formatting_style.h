@@ -19,7 +19,11 @@ namespace doctotext
 			~ListStyle();
 			ListStyle(const ListStyle& style);
 			ListStyle& operator = (const ListStyle& style);
-			///Sets leading characters for each position in the list. prefix must be a value encoded in UTF8. Default value: empty string (no prefix)
+			/*
+			 * Sets leading characters for each position in the list.
+			 * prefix must be a value encoded in UTF8. Default value:
+			 * empty string (no prefix)
+			*/
 			void setPrefix(const std::string& prefix);
 			void setPrefix(const char* prefix);
 			const char* getPrefix() const;
