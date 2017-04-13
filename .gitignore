@@ -34,6 +34,15 @@
 *.su
 
 #tmp file
+#.cproject
+#.project
+#.settings
 build
 doc
 version.h
+src/doctotext
+tests/c_api_test
+tests/cpp_api_test
+tests/multithreading_test
+tests/read_from_buffer_test
+
