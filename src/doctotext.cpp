@@ -304,7 +304,15 @@ int main(int argc, char* argv[])
 	}
 	else
 	{
-		//解析文件内容
+		//解析文件内容,
+        #warning NOTCE: 注意下面的所有 printf 语句不要做任何修改，修改后会造成运行自动化测试报错: make test
+        /*
+         * 原因是解析出来的内容和 tests目录下面 *.out 中的内容不相符，
+         * 例如: 解析 tests/1.doc.out 最终结果的内容就是现在下面 printf 所打印输出的内容格式，
+         * 从可以 tests/Makefile 中看到，在测试的过程中是通过 diff 命令比较，也就是通过比较 1.doc
+         * 的解析结果内容和 1.doc.out 内容的是否相同来判断程序是否正常运行的
+         */
+
 		string text;
 		if (!extractor.processFile(argv[argc - 1], text))
 		{
@@ -313,7 +321,7 @@ int main(int argc, char* argv[])
 		}
 
 		//打印文件内容
-		printf("file content:%s\n", text.c_str());
+		printf("%s\n", text.c_str());
 
 		/*
 		 *  解析 link 信息
@@ -332,11 +340,10 @@ int main(int argc, char* argv[])
 		extractor.getParsedLinks(links);
 		if (links.size() > 0)
 		{
+			printf("parsed links:\n");
 			for (size_t i = 0; i < links.size(); ++i)
 			{
-				printf("link getLinkUrl is:%s\n", links[i].getLinkUrl());
-				printf("link getLinkTextPosition is:%d\n", links[i].getLinkTextPosition());
-				printf("link getLinkText len is:%d\n", strlen(links[i].getLinkText()));
+				printf("%s @ index = %d length = %d\n", links[i].getLinkUrl(), links[i].getLinkTextPosition(), strlen(links[i].getLinkText()));
 			}
 		}
 
@@ -345,9 +352,10 @@ int main(int argc, char* argv[])
 		extractor.getAttachments(attachments);
 		if (attachments.size() > 0)
 		{
+			printf("parsed attachments:\n");
 			for (size_t i = 0; i < attachments.size(); ++i)
 			{
-				printf("attachments name: %s\n", attachments[i].filename());
+				printf("\nname: %s\n", attachments[i].filename());
 				std::map<std::string, Variant> variables = attachments[i].getFields();
 				for (std::map<std::string, Variant>::iterator it = variables.begin(); it != variables.end(); ++it)
 				{

@@ -71,6 +71,7 @@ int main(int argc, char* argv[])
 				printf("%s @ index = %d length = %d\n", links[i].getLinkUrl(), links[i].getLinkTextPosition(), strlen(links[i].getLinkText()));
 			}
 		}
+
 		std::vector<Attachment> attachments;
 		extractor.getAttachments(attachments);
 		if (attachments.size() > 0)
@@ -89,6 +90,7 @@ int main(int argc, char* argv[])
 				}
 			}
 		}
+
 	}
 	return 0;
 }

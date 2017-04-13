@@ -37,6 +37,7 @@
 #.cproject
 #.project
 #.settings
+VERSION
 build
 doc
 version.h
