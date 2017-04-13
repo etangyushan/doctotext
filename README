@@ -29,5 +29,20 @@
 ** This program is distributed in the hope that it will be useful,
 ** but WITHOUT ANY WARRANTY; without even the implied warranty of
 ** MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-**
+** 
 *****************************************************************************/
+
+官方最后更新的版本: doctotext-4.0-20140202 
+
+注意:
+0. 不支持解析嵌套文件,只能获取第一层的文件内容(eml除外)
+
+1. 源码编译过程中会有很多的 #warning TODO: XXXXXXXX , 这写都是程序中还没有做的
+   准备逐步完善的地方
+
+2. doctotext.c 中的解析文件内容的printf 打印最好别修改，因为会造成运行自动化测
+    测试时的错误
+
+3. 这个代码是在官方最后更新的版本基础上自己维护的版本
+   开发环境是: centos6.5 开发版
+     开发工具: eclipse-cpp-Mars Release (4.5.0)
