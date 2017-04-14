@@ -1301,7 +1301,9 @@ struct PDFParser::Implementation
 					{
 						std::map<std::string, PDFObject*>::iterator it = m_objects.find(key);
 						if (it == m_objects.end())
+						{
 							return NULL;
+						}
 						return it->second->getReferenceCall();
 					}
 
@@ -3734,23 +3736,32 @@ struct PDFParser::Implementation
 				}
 			}
 
+			//获取 name 对象： 以 / 为标识
 			void readName(PDFName& name)
 			{
 				char ch;
+
+				//确认对象类型
 				//go to the name. Character (/) marks beggining of the name
 				while (true)
 				{
 					if (!m_data_stream->read(&ch, 1, 1))
+					{
 						throw Exception("PDF Reader: Unexpected end of buffer during reading PDF name");
+					}
 					if (ch == '/')
+					{
 						break;
+					}
 				}
 				name.m_value.clear();
 				while (true)
 				{
 					ch = m_data_stream->getc();
 					if (ch == EOF)
+					{
 						throw Exception("PDF Reader: Unexpected end of buffer during reading PDF name. Current content: " + name());
+					}
 					switch (ch)
 					{
 						case 0:
@@ -3770,15 +3781,18 @@ struct PDFParser::Implementation
 						case '{':
 						case '}':
 						{
-							//this character is not part of the name
+							//不是 name 对象的合法字符，this character is not part of the name
 							m_data_stream->unGetc(ch);
 							return;
 						}
 						case '#':
 						{
+							//#标识这个字符是16进制表示的字符，例如: /A#42 = AB
 							char hex_char[2];
 							if (!m_data_stream->read(hex_char, 1, 2))
+							{
 								throw Exception("PDF Reader: Unexpected end of buffer during reading PDF name. Current content: " + name());
+							}
 							name.m_value += hex_char_to_single_char(hex_char);
 							break;
 						}
@@ -3790,32 +3804,44 @@ struct PDFParser::Implementation
 				}
 			}
 
+			//获取 string 对象
 			void readString(PDFString& string)
 			{
 				char ch;
 				string.m_is_hex = false;
 				string.m_value.clear();
+
+				//确认对象类型
 				//search for string content
 				while (true)
 				{
 					if (!m_data_stream->read(&ch, 1, 1))
+					{
 						throw Exception("PDF Reader: Unexpected end of buffer during reading PDF string");
+					}
 					if (ch == '(')	//literal
+					{
+						//字面类型值: ()
 						break;
+					}
 					if (ch == '<')	//hex
 					{
+						//十六进值类型: <>
 						string.m_is_hex = true;
 						break;
 					}
 				}
 				if (string.m_is_hex)
 				{
+					//转换为字面值
 					char hex_char[2];
 					unsigned int got = 0;
 					while (true)
 					{
 						if (!m_data_stream->read(&ch, 1, 1))
+						{
 							throw Exception("PDF Reader: Unexpected end of buffer during reading PDF hex string. Current value: " + string.m_value);
+						}
 						if (ch == '>')
 						{
 							if (got == 1)
@@ -3827,7 +3853,9 @@ struct PDFParser::Implementation
 						}
 						normalize_hex_char(ch);
 						if (!hex_char_is_valid(ch))
+						{
 							continue;
+						}
 						hex_char[got++] = ch;
 						if (got == 2)
 						{
@@ -3842,13 +3870,17 @@ struct PDFParser::Implementation
 					while (true)
 					{
 						if (!m_data_stream->read(&ch, 1, 1))
+						{
 							throw Exception("PDF Reader: Unexpected end of buffer during reading PDF literal string. Current value: " + string.m_value);
+						}
 						switch (ch)
 						{
 							case '\\':
 							{
 								if (!m_data_stream->read(&ch, 1, 1))
+								{
 									throw Exception("PDF Reader: Unexpected end of buffer during reading PDF literal string. Current value: " + string.m_value);
+								}
 								switch (ch)
 								{
 									case 10:
@@ -3891,9 +3923,13 @@ struct PDFParser::Implementation
 									{
 										ch = m_data_stream->getc();
 										if (ch == EOF)
+										{
 											throw Exception("PDF Reader: Unexpected end of buffer during reading PDF literal string. Current value: " + string.m_value);
+										}
 										if (ch != 10)
+										{
 											m_data_stream->unGetc(ch);
+										}
 										break;
 									}
 									case '0':
@@ -3907,10 +3943,13 @@ struct PDFParser::Implementation
 									case '8':
 									case '9':
 									{
+										//八进制的数据: 例如 A\66 = AB
 										char octal[3];
 										octal[0] = ch;
 										if (!m_data_stream->read(octal + 1, 1, 2))
+										{
 											throw Exception("PDF Reader: Unexpected end of buffer during reading PDF literal string (octal number). Current value: " + string.m_value);
+										}
 										char res = ((octal[0] - '0') << 6);
 										res = res | ((octal[1] - '0') << 3);
 										res = res | (octal[2] - '0');
@@ -3927,21 +3966,28 @@ struct PDFParser::Implementation
 							}
 							case 10:
 							{
+								//换行,在linux 下面出现字符 10 是一次回车换行
 								string.m_value += '\n';
 								break;
 							}
 							case 13:
 							{
+								//回车,在windows 下面出现字符 13 10 连续在一起时才是一次回车换行
 								ch = m_data_stream->getc();
 								if (ch == EOF)
+								{
 									throw Exception("PDF Reader: Unexpected end of buffer during reading PDF literal string. Current value: " + string.m_value);
+								}
 								if (ch != 10)
+								{
 									m_data_stream->unGetc(ch);
+								}
 								string.m_value += '\n';
 								break;
 							}
 							case '(':
 							{
+								//处理嵌套 (())
 								++parentheses_depth;
 								string.m_value += '(';
 								break;
@@ -3949,7 +3995,10 @@ struct PDFParser::Implementation
 							case ')':
 							{
 								if (parentheses_depth == 0)
+								{
+									//到结尾的右括号就结束解析
 									return;
+								}
 								--parentheses_depth;
 								string.m_value += ')';
 								break;
@@ -3963,45 +4012,63 @@ struct PDFParser::Implementation
 				}
 			}
 
+			//获取 boolean 对象: true 和 false
 			void readBoolean(PDFBoolean& boolean)
 			{
 				char buffer[4];
 				char ch = m_data_stream->getc();
 				if (ch == EOF)
+				{
 					throw Exception("PDF Reader: Unexpected end of buffer during reading a boolean");
+				}
 				if (ch == 't')
 				{
 					boolean.m_value = true;
 					//read rest of the string (true)
 					if (!m_data_stream->read(buffer, 1, 3))
+					{
 						throw Exception("PDF Reader: Unexpected end of buffer during reading a boolean");
+					}
 				}
 				else	//false
 				{
 					boolean.m_value = false;
 					//read rest of the string (false)
 					if (!m_data_stream->read(buffer, 1, 4))
+					{
 						throw Exception("PDF Reader: Unexpected end of buffer during reading a boolean");
+					}
 				}
 			}
 
+			//获取 array 对象，可以是任何对象，包含 array 对象
 			void readArray(PDFArray& array)
 			{
 				char ch;
+
+				//确认对象类型
 				while (true)
 				{
 					if (!m_data_stream->read(&ch, 1, 1))
+					{
 						throw Exception("PDF Reader: Unexpected end of buffer during reading an array");
+					}
 					if (ch == '[')
+					{
 						break;
+					}
 				}
 				while (true)
 				{
 					ch = m_data_stream->getc();
 					if (ch == EOF)
+					{
 						throw Exception("PDF Reader: Unexpected end of buffer during reading an array");
+					}
 					if (ch == ']')
+					{
 						return;
+					}
 					PDFObject* value_object = NULL;
 					try
 					{
@@ -4019,7 +4086,9 @@ struct PDFParser::Implementation
 							{
 								ch = m_data_stream->getc();
 								if (ch == EOF)
+								{
 									throw Exception("PDF Reader: Unexpected end of buffer during reading an array");
+								}
 								if (ch == '<')	//dictionary
 								{
 									value_object = new PDFDictionary;
@@ -4062,6 +4131,7 @@ struct PDFParser::Implementation
 							}
 							case '[':	//value is an array
 							{
+								//嵌套 array 对象
 								value_object = new PDFArray;
 								m_data_stream->unGetc(ch);
 								readArray(*(PDFArray*)value_object);
@@ -4106,15 +4176,20 @@ struct PDFParser::Implementation
 									ch = m_data_stream->getc();
 									++to_seek_backward;
 									if (ch == EOF)
+									{
 										throw Exception("PDF Reader: Unexpected end of buffer during reading an array");
+									}
 									if (ch == ' ')
 									{
 										++spaces;
 										if (spaces > 2)	//indirect reference contain only two spaces
+										{
 											break;
+										}
 									}
 									else if (ch == 'R' && spaces == 2)	//indirect reference
 									{
+										//indirect reference 间接对象: 例如 1 0 R
 										is_reference = true;
 										break;
 									}
@@ -4124,14 +4199,18 @@ struct PDFParser::Implementation
 									}
 								}
 								if (!m_data_stream->seek(-to_seek_backward, SEEK_CUR))
+								{
 									throw Exception("PDF Reader: Cant rewind cursor during reading an array");
+								}
 								if (is_reference)
 								{
 									value_object = new PDFReferenceCall(*this);
 									readIndirectReference(*(PDFReferenceCall*)value_object);
 								}
 								else
+								{
 									value_object = readNumeric();
+								}
 								array.m_objects.push_back(value_object);
 								break;
 							}
@@ -4155,6 +4234,7 @@ struct PDFParser::Implementation
 				}
 			}
 
+			//获取 numeric 对象： 123
 			PDFObject* readNumeric()
 			{
 				bool negative = false;
@@ -4181,9 +4261,13 @@ struct PDFParser::Implementation
 						case '.':
 						{
 							if (number_str.length() == 0)
+							{
 								number_str += "0.";
+							}
 							else
+							{
 								number_str += ".";
+							}
 							is_float = true;
 							break;
 						}
@@ -4211,9 +4295,13 @@ struct PDFParser::Implementation
 							{
 								double value = strtod(begin, &end);
 								if (value == 0.0 && begin == end)
+								{
 									throw Exception("Error while converting number " + number_str + " to double");
+								}
 								if (negative)
+								{
 									value = -value;
+								}
 								object = new PDFNumericFloat;
 								((PDFNumericFloat*)object)->m_value = value;
 							}
@@ -4221,9 +4309,13 @@ struct PDFParser::Implementation
 							{
 								long value = strtol(begin, &end, 10);
 								if (value == 0 && begin == end)
+								{
 									throw Exception("Error while converting number " + number_str + " to long");
+								}
 								if (negative)
+								{
 									value = -value;
+								}
 								object = new PDFNumericInteger;
 								((PDFNumericInteger*)object)->m_value = value;
 							}
@@ -4233,11 +4325,14 @@ struct PDFParser::Implementation
 				}
 			}
 
+			//获取 null 对象： null
 			void readNull(PDFNull& null)
 			{
 				char buffor[4];
 				if (!m_data_stream->read(buffor, 1, 4) || memcmp(buffor, "null", 4) != 0)
+				{
 					throw Exception("PDF Reader: Invalid null value");
+				}
 			}
 
 			void readStream(PDFStream& stream)
@@ -4284,6 +4379,7 @@ struct PDFParser::Implementation
 				}
 			}
 
+			//获取间接对象: 例如 3 0 R
 			void readIndirectReference(PDFReferenceCall& reference)
 			{
 				char ch;
@@ -4344,40 +4440,54 @@ struct PDFParser::Implementation
 				}
 			}
 
+			//读取字典信息： name 对象和任意对象组成
 			void readDictionary(PDFDictionary& dictionary)
 			{
 				int ch = 0, prev_ch = 0;
 				bool reading_key = false;
 				bool reading_value = false;
 				PDFName key_name;
-				//search for dictionary
+
+				//找到字典的标识: << 跳过，search for dictionary
 				while (true)
 				{
 					prev_ch = ch;
 					ch = m_data_stream->getc();
 					if (ch == EOF)
+					{
 						throw Exception("PDF Reader: Unexpected end of buffer during reading a dictionary");
+					}
 					if (prev_ch == '<' && ch == '<')
 					{
 						reading_key = true;
 						break;
 					}
 				}
+
+				//解析字典信息
 				while (true)
 				{
 					prev_ch = ch;
 					ch = m_data_stream->getc();
 					if (ch == EOF)
+					{
 						throw Exception("PDF Reader: Unexpected end of buffer during reading a dictionary");
+					}
 					if (ch == '>' && prev_ch == '>')
+					{
+						//字典的结尾标识
 						return;
+					}
+
 					if (ch == '%')
 					{
+						//跳过注释信息
 						skipComment();
 						break;
 					}
 					else if (reading_key && ch == '/')
 					{
+						//获取name 对象: key_name 可以标识字典中值作用的关键字
 						m_data_stream->unGetc(ch);
 						key_name.m_value.clear();
 						try
@@ -4394,6 +4504,7 @@ struct PDFParser::Implementation
 					}
 					else if (reading_value)
 					{
+						//获取值，可以是任意类型的 pdf 对象
 						PDFObject* value_object = NULL;
 						try
 						{
@@ -4401,6 +4512,8 @@ struct PDFParser::Implementation
 							{
 								case '/':	//value is a name
 								{
+									//值是 name 对象，
+
 									value_object = new PDFName;
 									m_data_stream->unGetc(ch);
 									readName(*(PDFName*)value_object);
@@ -4411,14 +4524,22 @@ struct PDFParser::Implementation
 								}
 								case '<':	//value is a hexadecimal string or dictionary
 								{
+									//值是十六进制的 string 或者 dictionary 对象
+
 									ch = m_data_stream->getc();
 									if (ch == EOF)
+									{
 										throw Exception("PDF Reader: Unexpected end of buffer during reading a dictionary");
+									}
 									if (ch == '<')	//dictionary
 									{
+										//可以确定是 dictionary 对象: <<>>
+
 										value_object = new PDFDictionary;
 										m_data_stream->unGetc('<');
 										m_data_stream->unGetc(ch);
+
+										//嵌套的 dictionary 对象, 递归调用
 										readDictionary(*(PDFDictionary*)value_object);
 										reading_value = false;
 										reading_key = true;
@@ -4426,6 +4547,8 @@ struct PDFParser::Implementation
 									}
 									else	//hexadecimal string
 									{
+										//可以确定是十六进制的 string  对象: <>
+
 										value_object = new PDFString;
 										m_data_stream->unGetc('<');
 										m_data_stream->unGetc(ch);
@@ -4438,6 +4561,8 @@ struct PDFParser::Implementation
 								}
 								case '(':	//value is a literal string
 								{
+									//字面意义的 string 对象
+
 									value_object = new PDFString;
 									m_data_stream->unGetc(ch);
 									readString(*(PDFString*)value_object);
@@ -4509,15 +4634,20 @@ struct PDFParser::Implementation
 										ch = m_data_stream->getc();
 										++seek_backward;
 										if (ch == EOF)
+										{
 											throw Exception("PDF Reader: Unexpected end of buffer during reading a dictionary");
+										}
 										if (ch == ' ')
 										{
 											++spaces;
 											if (spaces > 2)	//indirect reference contain only two spaces
+											{
 												break;
+											}
 										}
 										else if (ch == 'R' && spaces == 2)	//indirect reference
 										{
+											//indirect reference 间接对象: 例如 1 0 R
 											is_reference = true;
 											break;
 										}
@@ -4527,14 +4657,18 @@ struct PDFParser::Implementation
 										}
 									}
 									if (!m_data_stream->seek(-seek_backward, SEEK_CUR))
+									{
 										throw Exception("PDF Reader: Cant rewind cursor after reading a dictionary");
+									}
 									if (is_reference)
 									{
 										value_object = new PDFReferenceCall(*this);
 										readIndirectReference(*(PDFReferenceCall*)value_object);
 									}
 									else
+									{
 										value_object = readNumeric();
+									}
 									reading_value = false;
 									reading_key = true;
 									dictionary.m_objects[key_name.m_value] = value_object;
@@ -4839,38 +4973,66 @@ struct PDFParser::Implementation
 			{
 				try
 				{
+					/*
+					 * 解析 startxref 的值，找到交叉引用表的偏移量
+					 * 这个地方是取文件尾开始的后25个字节，这个有写pdf文件尾部会有一些其他的数据
+					 * 会造成解析失败，应该改为从文件尾开始查找关键字 startxref 开始
+					 */
 					char start_xref_buffer[25];
 					size_t xref_data_position;
 					if (!m_data_stream->seek(-25, SEEK_END))
+					{
 						throw Exception("PDF Reader: Cant read xref data: Cant seek to the position of startxref");
+					}
 					if (!m_data_stream->read(start_xref_buffer, 1, 25))
+					{
 						throw Exception("PDF Reader: Cant read xref data: Cant read the position of startxref");
+					}
 					int index = 0;
+
 					while (start_xref_buffer[index] > '9' || start_xref_buffer[index] < '0')
 					{
 						++index;
 						if (index == 25)
+						{
 							throw Exception("PDF Reader: Cant read xref data: Cant read the position of startxref");
+						}
 					}
+
+					//得到交叉引用表的偏移量
 					bool backward_compatibility = false;
 					std::set<size_t> start_xref_positions;
 					xref_data_position = strtol(start_xref_buffer + index, NULL, 10);
 					start_xref_positions.insert(xref_data_position);
+
+                    //解析交叉引用表
 					while (true)
 					{
 						if (!m_data_stream->seek(xref_data_position, SEEK_SET))
+						{
 							throw Exception("PDF Reader: Cant seek to the cross reference data");
+						}
+
 						char ch = m_data_stream->getc();
 						if (ch == EOF)
+						{
 							throw Exception("PDF Reader: Unexpected end of buffer");
+						}
+
+						//有 xref 关键字的是明文存储的交叉引用表
 						if (ch == 'x')	//xref line
 						{
 							//xref table
 							std::string line;
 							readLine(line);
 							if (line.length() < 3 || line.substr(0, 3) != "ref")
+							{
 								throw Exception("PDF Reader: Invalid xref keyword");
+							}
+
+							//获取交叉引用表
 							readXrefTable();
+
 							m_trailer_dict.clearDictionary();
 							readDictionary(m_trailer_dict);
 							if (!m_got_root && m_trailer_dict.getObjAsReferenceCall("Root"))
@@ -4893,12 +5055,18 @@ struct PDFParser::Implementation
 							{
 								PDFNumericInteger* prev = m_trailer_dict.getObjAsNumericInteger("Prev");
 								if (prev)
+								{
 									xref_data_position = (*prev)();
+								}
 								else
+								{
 									return;	//no more cross reference data
+								}
 							}
 							if (start_xref_positions.find(xref_data_position) != start_xref_positions.end())
+							{
 								return;
+							}
 							start_xref_positions.insert(xref_data_position);
 						}
 						else
@@ -4907,18 +5075,24 @@ struct PDFParser::Implementation
 							m_data_stream->unGetc(ch);
 							PDFNumericInteger* num_index = readNumeric()->getNumericInteger();
 							if (!num_index)
+							{
 								throw Exception("PDF Reader: Invalid XRef stream");
+							}
 							size_t index = (*num_index)();
 							delete num_index;
 							//initialize obj:
 							if (m_references.size() < index + 1)
+							{
 								m_references.resize(index + 1);
+							}
 							m_references[index].m_type = ReferenceInfo::in_use;
 							m_references[index].m_offset = xref_data_position;
 							m_references[index].m_read = true;
 							PDFStream* xref_stream = readIndirectObject(index)->getStream();
 							if (!xref_stream)
+							{
 								throw Exception("PDF Reader: Invalid XRef stream");
+							}
 							readXRefStream(*xref_stream);
 							if (!m_got_root && xref_stream->m_dictionary->getObjAsReferenceCall("Root"))
 							{
@@ -4932,15 +5106,25 @@ struct PDFParser::Implementation
 							}
 							PDFNumericInteger* prev = NULL;
 							if (backward_compatibility)
+							{
 								prev = m_trailer_dict.getObjAsNumericInteger("Prev");
+							}
 							else
+							{
 								prev = xref_stream->m_dictionary->getObjAsNumericInteger("Prev");
+							}
 							if (prev)
+							{
 								xref_data_position = (*prev)();
+							}
 							else
+							{
 								return;	//no more cross reference data
+							}
 							if (start_xref_positions.find(xref_data_position) != start_xref_positions.end())
+							{
 								return;
+							}
 							start_xref_positions.insert(xref_data_position);
 						}
 					}
@@ -4952,6 +5136,7 @@ struct PDFParser::Implementation
 				}
 			}
 
+			//获取明文存储的交叉引用表
 			void readXrefTable()
 			{
 				try
@@ -4966,39 +5151,67 @@ struct PDFParser::Implementation
 						readLine(line);
 						ptr_start = (char*)line.c_str();
 						ptr_end = ptr_start;
+
+						//判断结尾关键字 trailer
 						if (ptr_start[0] != 't')	//trailer
 						{
+							//获取起始对象号
 							size_t start = strtol(ptr_start, &ptr_end, 10);
 							if (start == 0 && ptr_start == ptr_end)
+							{
 								throw Exception("PDF Reader: Error while coverting \"" + line + "\" to reference info");
+							}
 							ptr_start = ptr_end;
+
+							//获取对象个数
 							size_t count = strtol(ptr_start, &ptr_end, 10);
 							if (count == 0 && ptr_start == ptr_end)
+							{
 								throw Exception("PDF Reader: Error while coverting \"" + line + "\" to reference info");
+							}
+
 							if (start + count > m_references.size())
+							{
 								m_references.resize(start + count);
+							}
 							for (size_t i = 0; i < count; ++i)
 							{
 								readLine(line);
 								if (line.length() < 18)
+								{
 									throw Exception("PDF Reader: Line in cross reference table is too short: " + line);
+								}
 								reference = &m_references[start + i];
 								if (!reference->m_read)
 								{
+									//获取偏移量
 									ptr_start = (char*)line.c_str();
 									ptr_end = ptr_start;
 									reference->m_offset = strtol(ptr_start, &ptr_end, 10);
 									if (reference->m_offset == 0 && ptr_start == ptr_end)
+									{
 										throw Exception("PDF Reader: Error while coverting \"" + line + "\" to reference info");
+									}
+
+									//获取产生号
 									ptr_start = (char*)line.c_str() + 11;
 									ptr_end = ptr_start;
 									reference->m_generation = strtol(ptr_start, &ptr_end, 10);
 									if (reference->m_generation == 0 && ptr_start == ptr_end)
+									{
 										throw Exception("PDF Reader: Error while coverting \"" + line + "\" to reference info");
+									}
+
+									//获取状态标识，f 标识未使用，n 标识使用中
 									if (line[17] == 'f')
+									{
 										reference->m_type = ReferenceInfo::free;
+									}
 									else
+									{
 										reference->m_type = ReferenceInfo::in_use;
+									}
+
 									reference->m_read = true;
 								}
 							}
