@@ -52,8 +52,8 @@
 //some functions specific for this parser
 
 //converts hex char (2 bytes) to single char. Examples:
-//41 will be converted to single 'A'
-//30 will be converted to '0'
+//0x41 will be converted to single 'A'
+//0x30 will be converted to '0'
 static unsigned char hex_char_to_single_char(const char* hex_char)
 {
 	//first four bits
@@ -3640,13 +3640,25 @@ struct PDFParser::Implementation
 			{
 				m_root_ref = new PDFReferenceCall(*this);
 				m_info_ref = new PDFReferenceCall(*this);
+
+				//获取所有的交叉引用表
 				readReferenceData();
 				if (m_got_info)
+				{
 					m_info = m_info_ref->getDictionary();
+				}
+
 				if (m_got_root)
+				{
 					m_root_dictionary = m_root_ref->getDictionary();
+				}
+
 				if (!m_root_dictionary)
+				{
 					throw Exception("Root dictionary is missing!");
+				}
+
+				//获取属性的对象
 				m_metadata = m_root_dictionary->getObjAsStream("Metadata");
 			}
 
@@ -4695,18 +4707,23 @@ struct PDFParser::Implementation
 				}
 			}
 
+			//间接对象: xx 0 R
 			PDFObject* readIndirectObject(size_t index)
 			{
 				if (index >= m_references.size())
+				{
 					throw Exception("PDF Reader: Cannot read indirect object. Size of the table: " + uint_to_string(m_references.size())
 									+ ", index: " + uint_to_string(index));
+				}
 				ReferenceInfo* reference_info = &m_references[index];
 				try
 				{
 					if (reference_info->m_object)
 					{
 						if (reference_info->m_object->m_object)
+						{
 							return reference_info->m_object->m_object;
+						}
 					}
 					else
 					{
@@ -4714,20 +4731,28 @@ struct PDFParser::Implementation
 						reference_info->m_object->m_generation = reference_info->m_generation;
 						reference_info->m_object->m_index = index;
 					}
+
+					//分三类交叉引用表信息，free(不使用), compressed(压缩类型), in_use(使用中)
 					switch (reference_info->m_type)
 					{
 						case ReferenceInfo::free:
 						{
+							//不使用的直接废弃
 							reference_info->m_object->m_object = new PDFNull;
 							return reference_info->m_object->m_object;
 						}
 						case ReferenceInfo::compressed:	//in use, but compressed
 						{
+
 							//object is compressed in another stream, m_offset is an index here.
+							//对象是在另外一个压缩流中，m_offset 是压缩流的对象号索引值
 							if (reference_info->m_offset >= m_references.size())
+							{
 								throw Exception("PDF Reader: Cannot read compressed object. Size of the table: "
 												+ uint_to_string(m_references.size()) + ", index: "
 												+ uint_to_string(reference_info->m_offset));
+							}
+
 							ReferenceInfo* object_stream_reference = &m_references[reference_info->m_offset];
 							if (!object_stream_reference->m_object)
 							{
@@ -4739,16 +4764,21 @@ struct PDFParser::Implementation
 							try
 							{
 								if (!object_stream_reference->m_object->m_object)
+								{
 									object_stream_reference->m_object->m_object = readIndirectObject(object_stream_reference->m_object->m_index);
+								}
 								object_stream = object_stream_reference->m_object->getStream();
 								if (!object_stream)
+								{
 									throw Exception("Object stream does not exist");
+								}
 							}
 							catch (Exception& ex)
 							{
 								ex.appendError("PDF Reader: Cannot read stream with compressed objects");
 								throw;
 							}
+
 							//generation is an index in compressed object.
 							try
 							{
@@ -5034,17 +5064,25 @@ struct PDFParser::Implementation
 							readXrefTable();
 
 							m_trailer_dict.clearDictionary();
+
+							//读取 trailer dictionary 信息，从这里我们可以获取 Root 的对象号
 							readDictionary(m_trailer_dict);
+
+							//Root 对象可能出现多次，但是值是一定的
 							if (!m_got_root && m_trailer_dict.getObjAsReferenceCall("Root"))
 							{
 								m_got_root = true;
 								*m_root_ref = *m_trailer_dict.getObjAsReferenceCall("Root");
 							}
+
+							//Root 对象可能出现多次，但是值是一定的
 							if (!m_got_info && m_trailer_dict.getObjAsReferenceCall("Info"))
 							{
 								m_got_info = true;
 								*m_info_ref = *m_trailer_dict.getObjAsReferenceCall("Info");
 							}
+
+							//压缩类型的交叉引用表的偏移量标识
 							PDFNumericInteger* xref_stm = m_trailer_dict.getObjAsNumericInteger("XRefStm");
 							if (xref_stm)
 							{
@@ -5053,6 +5091,7 @@ struct PDFParser::Implementation
 							}
 							else
 							{
+								//明文类型的交叉引用表的偏移量标识
 								PDFNumericInteger* prev = m_trailer_dict.getObjAsNumericInteger("Prev");
 								if (prev)
 								{
@@ -5113,6 +5152,7 @@ struct PDFParser::Implementation
 							{
 								prev = xref_stream->m_dictionary->getObjAsNumericInteger("Prev");
 							}
+
 							if (prev)
 							{
 								xref_data_position = (*prev)();
