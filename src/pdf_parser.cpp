@@ -3437,9 +3437,10 @@ struct PDFParser::Implementation
 
 			class PDFReferenceCall : public PDFObject
 			{
+				//例如:xxx 0 R
 				public:
-					size_t m_index;
-					size_t m_generation;
+					size_t m_index;       //对象号:xxx
+					size_t m_generation;  //产生号:一般为0
 					PDFObject* m_object;
 					PDFReader* m_reader;
 
@@ -6896,9 +6897,13 @@ struct PDFParser::Implementation
 	std::ostream* m_log_stream;
 	PDFContent m_pdf_content;
 
-	//获取字体信息 （cmap）或者是 Do 的 cid 内容信息
+	//获取字体信息（CMap）或者是 Do 的 cid 内容信息(现在没有实现Do)
 	void parseFonts()
 	{
+		/*
+		 * page 的字体信息，多个也的字体名称可能相同，但是字体名称对应的对象号有可能不同，
+		 * 所以每个 page 有自己单独的字体集合
+		 */
 		for (size_t i = 0; i < m_pdf_content.m_pages_resources.size(); ++i)
 		{
 			m_pdf_content.m_fonts_for_pages.push_back(PDFContent::FontsByNames());
@@ -6908,8 +6913,9 @@ struct PDFParser::Implementation
 				continue;
 			}
 
-			//获取字体的 dicctionary 信息：包含了 cmap 信息或者是 cid 内容信息(Do 的情况下)
+			//获取字体的 dicctionary 信息：包含了 CMap 信息或者是 cid 内容信息(Do 的情况下)
 			PDFReader::PDFDictionary* fonts_dictionary = res_dictionary->getObjAsDictionary("Font");
+            //page 的字体集合
 			PDFContent::FontsByNames* fonts_for_page = &m_pdf_content.m_fonts_for_pages[i];
 			if (fonts_dictionary)
 			{
@@ -6920,36 +6926,50 @@ struct PDFParser::Implementation
 					//字体名称
 					std::string font_code = it->first;
 
-					//根据字体名称，获取字体的 dictionary 信息: /Font <<>>
+					//根据字体名称，获取字体对象的信息: /Font <<>>
 					PDFReader::PDFDictionary* font_dictionary = fonts_dictionary->getObjAsDictionary(font_code);
 					if (font_dictionary)
 					{
 						PDFContent::Font* font = NULL;
+
+						//标识是一个新字体对象
 						bool is_new_font = false;
+
+						//确保不创建相同的字体对象到字体集合中
 						//make sure we wont create the same instance of Font twice.
 						try
 						{
-							//这里根据字体名称获取到间接对象: xxx 0 R
+
+							//这里根据字体名称获取到间接对象:  例: /Font <</F1 3 0 R>> 中根据 F1 得到间接对象 3 0 R
 							PDFReader::PDFReferenceCall* font_dictionary_ref = fonts_dictionary->getObjAsReferenceCall(font_code);
 							if (font_dictionary_ref)
 							{
+								//查找字体对象是否已经存在字体集合中，find方法：找不到返回的迭代器的 end
 								if (m_pdf_content.m_fonts_by_indexes.find(font_dictionary_ref->m_index) == m_pdf_content.m_fonts_by_indexes.end())
 								{
+									//字体对象不在字体 map 中
 									is_new_font = true;
 									font = new PDFContent::Font;
 									font->m_font_dictionary = font_dictionary;
 									(*fonts_for_page)[font_code] = font;
+
+									//以对象号为索引值生成字体对象集合
 									m_pdf_content.m_fonts_by_indexes[font_dictionary_ref->m_index] = font;
 									m_pdf_content.m_fonts.push_back(font);
+
+//									std::cout << "font name is1:" + font_code << std::endl;
+//									std::cout << "m_index is1:" << font_dictionary_ref->m_index << std::endl;
 								}
 								else
 								{
-									std::cout << "font name is:" + font_code << std::endl;
+//									std::cout << "font name is2:" + font_code << std::endl;
 									(*fonts_for_page)[font_code] = m_pdf_content.m_fonts_by_indexes[font_dictionary_ref->m_index];
 								}
 							}
 							else
 							{
+                                //根据 Font 中的字体名称找不到对应的对象, 例: /Font <</F1 3 0 R /F3>> 有这种情况？
+//								std::cout << "font name is3:" + font_code << std::endl;
 								is_new_font = true;
 								font = new PDFContent::Font;
 								font->m_font_dictionary = font_dictionary;
@@ -6969,6 +6989,7 @@ struct PDFParser::Implementation
 
 						if (is_new_font)
 						{
+							//解析字体获取 CMap
 							getFontEncoding(*font);
 							getFontInfo(*font);
 						}
@@ -7120,12 +7141,15 @@ struct PDFParser::Implementation
 		}
 	}
 
+	//获取 CMap 信息
 	void getFontEncoding(PDFContent::Font& font)
 	{
 		//Check if this font contain "ToUnicode" stream.
 		PDFReader::PDFStream* to_unicode_stream = font.m_font_dictionary->getObjAsStream("ToUnicode");
 		if (to_unicode_stream)
+		{
 			parseCMap(to_unicode_stream->getIterator(), font.m_cmap);
+		}
 		//check if "Encoding" is defined. It can be a name...
 		PDFReader::PDFName* encoding_name = font.m_font_dictionary->getObjAsName("Encoding");
 		if (encoding_name)
