@@ -905,18 +905,18 @@ struct PDFParser::Implementation
 
 			enum OperatorTypes
 			{
-				Tj,
-				TJ,
-				Td,
+				Tj, //直接类型内容的标识
+				TJ, //cid内容标识
+				Td, //Td 和 Tm 决定是否换行
 				TD,
 				T_star,
-				Tm,
+				Tm, //Td 和 Tm 决定是否换行
 				double_quote,
 				quote,
 				TL,
-				BT,
-				ET,
-				Tf,
+				BT, //文本块开始标识
+				ET, //文本块结束标识
+				Tf, //字体名称标识
 				TZ,
 				cm,
 				q,
@@ -925,7 +925,7 @@ struct PDFParser::Implementation
 				Tw,
 				Ts,
 				#warning TODO: Add support for operator "Do".
-				Do,
+				Do, //存储在 resource 中的 cid 内容标识
 				usecmap,
 				begincidrange,
 				endcidrange,
@@ -7407,6 +7407,7 @@ struct PDFParser::Implementation
 		}
 	}
 
+	//解析 CMap 信息，生成一个字体数
 	void parseCMap(PDFReader::PDFStream::PDFStreamIterator& iterator, PDFContent::CMap& cmap)
 	{
 		iterator.backToRoot();
@@ -7611,18 +7612,26 @@ struct PDFParser::Implementation
 		{
 			try
 			{
+				//当前 page 的字体信息
 				PDFContent::FontsByNames* fonts_for_page = &m_pdf_content.m_fonts_for_pages[i];
 				std::vector<PDFReader::PDFStream*> contents;
 
 				PDFReader::PDFDictionary* page_obj = m_pdf_content.m_pages[i];
+				//cid内容标识关键字: Contents
 				PDFReader::PDFArray* page_contents_array = page_obj->getObjAsArray("Contents");
 				if (page_contents_array)
 				{
+					//是一个cid内容数组对象
 					for (size_t j = 0; j < page_contents_array->Size(); ++j)
+					{
 						contents.push_back(page_contents_array->getObjAsStream(j));
+					}
 				}
 				else
+				{
+					//直接就是cid内容信息
 					contents.push_back(page_obj->getObjAsStream("Contents"));
+				}
 
 				PDFContent::PageText page_text;
 				for (size_t j = 0; j < contents.size(); ++j)
@@ -7658,7 +7667,9 @@ struct PDFParser::Implementation
 										case PDFReader::Tm:
 										{
 											if (!in_text || last_numbers.size() < 6)
+											{
 												break;
+											}
 											page_text.executeTm(last_numbers);
 											break;
 										}
@@ -8074,8 +8085,13 @@ std::string PDFParser::plainText(const FormattingStyle& formatting)
 	try
 	{
 		Implementation::PDFReader pdf_reader(impl->m_data_stream);
+		//获取 page 信息
 		impl->parsePagesTree(pdf_reader);
+
+		//获取字体信息
 		impl->parseFonts();
+
+		//获取文本内容
 		impl->parseText(text);
 	}
 	catch (std::bad_alloc& ba)
