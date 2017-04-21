@@ -403,6 +403,7 @@ struct PlainTextExtractor::Implementation
 		return xlsb.error();
 	}
 
+	//解析 pdf 文件
 	bool parsePDF(PDFParser& pdf, std::string& text)
 	{
 		if (m_verbose_logging)

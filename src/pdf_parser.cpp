@@ -2373,6 +2373,7 @@ struct PDFParser::Implementation
 								throw Exception("PDF Stream iterator: invalid hex string, could not found '>' character");
 							}
 
+							//literral 内容
 							void readLiteralString(Pointer& ptr)
 							{
 								char ch = 0, prev;
@@ -2386,15 +2387,21 @@ struct PDFParser::Implementation
 										case '(':
 										{
 											if (prev != '\\')
+											{
 												++count;
+											}
 											break;
 										}
 										case ')':
 										{
 											if (prev != '\\')
+											{
 												--count;
+											}
 											if (count == -1)	//we have reached closing ')'
+											{
 												return;
+											}
 											break;
 										}
 										case '\\':
@@ -6621,10 +6628,24 @@ struct PDFParser::Implementation
 				}
 			}
 
+			/*
+			 * 文本矩阵：Tm
+			 * 6个参数：
+			 * [X1 0 0 X2 X3 X4]
+			 * X1：字体宽度
+			 * X2：字体高度
+			 * X3：水平位置
+			 * X4：垂直位置
+			 *
+			 * 例： 1 0 0 1 368.35 758.28 Tm
+			 *
+			 */
 			void executeTm(std::vector<double>& args)
 			{
 				for (int i = 0; i < 6; ++i)
+				{
 					m_current_state.m_matrix[i] = args[i];
+				}
 				m_current_state.m_line_matrix[0] = 0.0;
 				m_current_state.m_line_matrix[1] = 0.0;
 			}
@@ -6710,6 +6731,15 @@ struct PDFParser::Implementation
 				m_current_state.m_ctm[5] += tmp[1] * args[4] + tmp[3] * args[5];
 			}
 
+			/*
+			 * 文本对象
+			 * BT 文本开始
+			 * 	字体信息
+			 * 	位置信息
+			 * 	。。。
+			 * 	格式信息
+			 * ET 文本结束
+			 */
 			void executeBT()
 			{
 				m_current_state.m_matrix[0] = 1.0;
@@ -6722,10 +6752,13 @@ struct PDFParser::Implementation
 				m_current_state.m_line_matrix[1] = 0.0;
 			}
 
+			//内容是 cid 编码信息
 			void executeTJ(std::vector<TJArrayElement>& tj_array)
 			{
 				if (!m_font)
+				{
 					return;
+				}
 				double tmp_matrix[6], cid_matrix[6];
 				cid_matrix[0] = tmp_matrix[0] = m_current_state.m_ctm[0] * m_current_state.m_matrix[0] + m_current_state.m_ctm[2] * m_current_state.m_matrix[1];
 				cid_matrix[1] = tmp_matrix[1] = m_current_state.m_ctm[1] * m_current_state.m_matrix[0] + m_current_state.m_ctm[3] * m_current_state.m_matrix[1];
@@ -6765,9 +6798,13 @@ struct PDFParser::Implementation
 						{
 							unsigned int cid = m_font->getNextCIDandDecode(output);
 							if (i == tj_array.size() - 1 && !m_font->hasNextCid())
+							{
 								last = true;
+							}
 							if (add_charspace)
+							{
 								m_current_state.m_line_matrix[0] += char_space;
+							}
 
 							//update matrix for cid
 							cid_matrix[4] = tmp_matrix[4] + tmp_matrix[0] * m_current_state.m_line_matrix[0] + tmp_matrix[2] * m_current_state.m_line_matrix[1];
@@ -6791,13 +6828,21 @@ struct PDFParser::Implementation
 								first = false;
 							}
 							if (last)
+							{
 								str_width = x0 > x1 ? x0 - x_pos : x1 - x_pos;
+							}
 							if (abs(y1 - y0) > str_height)
+							{
 								str_height = abs(y1 - y0);
+							}
 							if (y_pos > y1)
+							{
 								y_pos = y1;
+							}
 							if (y_pos > y0)
+							{
 								y_pos = y0;
+							}
 
 							m_current_state.m_line_matrix[0] += advance;
 							if (output.length() > 0 && output[output.length() - 1] == ' ')
@@ -6813,6 +6858,7 @@ struct PDFParser::Implementation
 				m_text_elements.insert(new_element);
 			}
 
+			//显示字符串
 			void executeTj(std::string& str)
 			{
 				std::vector<TJArrayElement> tj_array;
@@ -6821,7 +6867,9 @@ struct PDFParser::Implementation
 				tj_array[0].m_text = str;
 				executeTJ(tj_array);
 				if (!m_font)
+				{
 					return;
+				}
 			}
 
 			void getText(std::string& output)
@@ -7606,6 +7654,7 @@ struct PDFParser::Implementation
 		}
 	}
 
+	//获取文本内容
 	void parseText(std::string& text)
 	{
 		for (size_t i = 0; i < m_pdf_content.m_pages.size(); ++i)
@@ -7633,6 +7682,7 @@ struct PDFParser::Implementation
 					contents.push_back(page_obj->getObjAsStream("Contents"));
 				}
 
+				//解析 cid 内容，获取cid编码信息
 				PDFContent::PageText page_text;
 				for (size_t j = 0; j < contents.size(); ++j)
 				{
@@ -7676,28 +7726,36 @@ struct PDFParser::Implementation
 										case PDFReader::Td:
 										{
 											if (!in_text || last_numbers.size() < 2)
+											{
 												break;
+											}
 											page_text.executeTd(last_numbers);
 											break;
 										}
 										case PDFReader::T_star:
 										{
 											if (!in_text)
+											{
 												break;
+											}
 											page_text.executeTstar();
 											break;
 										}
 										case PDFReader::TD:
 										{
 											if (!in_text || last_numbers.size() < 2)
+											{
 												break;
+											}
 											page_text.executeTD(last_numbers);
 											break;
 										}
 										case PDFReader::TJ:
 										{
 											if (!in_text)
+											{
 												break;
+											}
 											page_text.executeTJ(tj_array);
 											tj_array.clear();
 											break;
@@ -7705,51 +7763,67 @@ struct PDFParser::Implementation
 										case PDFReader::Tj:
 										{
 											if (!in_text)
+											{
 												break;
+											}
 											page_text.executeTj(last_string);
 											break;
 										}
 										case PDFReader::Tw:
 										{
 											if (!in_text || last_numbers.size() < 1)
+											{
 												break;
+											}
 											page_text.executeTw(last_numbers);
 											break;
 										}
 										case PDFReader::Tc:
 										{
 											if (!in_text || last_numbers.size() < 1)
+											{
 												break;
+											}
 											page_text.executeTc(last_numbers);
 											break;
 										}
 										case PDFReader::Ts:
 										{
 											if (!in_text || last_numbers.size() < 1)
+											{
 												break;
+											}
 											page_text.executeTs(last_numbers);
 											break;
 										}
 										case PDFReader::quote:
 										{
 											if (!in_text)
+											{
 												break;
+											}
 											page_text.executeQuote(last_string);
 											break;
 										}
 										case PDFReader::double_quote:
 										{
 											if (!in_text || last_numbers.size() < 2)
+											{
 												break;
+											}
 											page_text.executeDoubleQuote(last_string, last_numbers);
 											break;
 										}
 										case PDFReader::Tf:
 										{
 											if (!in_text && last_numbers.size() < 1)
+											{
 												break;
+											}
 											if (fonts_for_page->find(last_name) != fonts_for_page->end())
+											{
 												page_text.executeTf(last_numbers, *(*fonts_for_page)[last_name]);
+											}
 											break;
 										}
 										case PDFReader::BT:
@@ -7796,7 +7870,9 @@ struct PDFParser::Implementation
 								case PDFReader::string:
 								{
 									if (in_text)
+									{
 										iterator.toHexString(last_string);
+									}
 									break;
 								}
 								case PDFReader::array:
@@ -7828,7 +7904,9 @@ struct PDFParser::Implementation
 								case PDFReader::name:
 								{
 									if (in_text)
+									{
 										last_name = std::string(iterator.getData() + 1, iterator.getDataLength() - 1);
+									}
 									break;
 								}
 								case PDFReader::int_numeric:
@@ -7879,7 +7957,9 @@ struct PDFParser::Implementation
 				int offset = 0;
 				std::string creation_date_str = (*creation_date)();
 				while (creation_date_str.length() > offset && (creation_date_str[offset] < '0' || creation_date_str[offset] > '9'))
+				{
 					++offset;
+				}
 				creation_date_str.erase(0, offset);
 				parsePDFDate(creation_date_tm, creation_date_str);
 				metadata.setCreationDate(creation_date_tm);
@@ -7893,12 +7973,15 @@ struct PDFParser::Implementation
 				int offset = 0;
 				std::string mod_date_str = (*modify_date)();
 				while (mod_date_str.length() > offset && (mod_date_str[offset] < '0' || mod_date_str[offset] > '9'))
+				{
 					++offset;
+				}
 				mod_date_str.erase(0, offset);
 				parsePDFDate(modify_date_tm, mod_date_str);
 				metadata.setLastModificationDate(modify_date_tm);
 			}
 		}
+
 		if (!got_author || !got_creation_date || !got_modify_date)
 		{
 			PDFReader::PDFStream* metadata_stream = pdf_reader.m_metadata;
@@ -7914,7 +7997,9 @@ struct PDFParser::Implementation
 						pos += 7;
 						std::string author;
 						while (pos < content.length() && content[pos] != '\"' && content[pos] != '\'' && content[pos] != '<')
+						{
 							author += content[pos];
+						}
 						metadata.setAuthor(author);
 					}
 				}
@@ -7927,16 +8012,22 @@ struct PDFParser::Implementation
 						entry_len = 10;
 					}
 					else
+					{
 						entry_len = 12;
+					}
 					if (pos != std::string::npos)
 					{
 						pos += entry_len;
 						std::string creation_date;
 						while (pos < content.length() && content[pos] != '\"' && content[pos] != '\'' && content[pos] != '<')
+						{
 							creation_date += content[pos];
+						}
 						tm creation_date_tm;
 						if (string_to_date(creation_date, creation_date_tm))
+						{
 							metadata.setCreationDate(creation_date_tm);
+						}
 					}
 				}
 				if (!got_modify_date)
@@ -7948,16 +8039,22 @@ struct PDFParser::Implementation
 						entry_len = 7;
 					}
 					else
+					{
 						entry_len = 10;
+					}
 					if (pos != std::string::npos)
 					{
 						pos += entry_len;
 						std::string modify_date;
 						while (pos < content.length() && content[pos] != '\"' && content[pos] != '\'' && content[pos] != '<')
+						{
 							modify_date += content[pos];
+						}
 						tm modify_date_tm;
 						if (string_to_date(modify_date, modify_date_tm))
+						{
 							metadata.setLastModificationDate(modify_date_tm);
+						}
 					}
 				}
 			}
@@ -8014,7 +8111,9 @@ PDFParser::PDFParser(const char* buffer, size_t size)
 		if (impl)
 		{
 			if (impl->m_data_stream)
+			{
 				delete impl->m_data_stream;
+			}
 			delete impl;
 		}
 		throw;
