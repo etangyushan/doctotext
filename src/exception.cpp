@@ -53,7 +53,9 @@ Exception::Exception() throw()
 	catch (std::bad_alloc& ba)
 	{
 		if (impl)
+		{
 			delete impl;
+		}
 		throw;
 	}
 }
@@ -69,7 +71,9 @@ Exception::Exception(const std::string &first_error_message) throw()
 	catch (std::bad_alloc& ba)
 	{
 		if (impl)
+		{
 			delete impl;
+		}
 		throw;
 	}
 }
@@ -85,7 +89,9 @@ Exception::Exception(const Exception &ex) throw()
 	catch (std::bad_alloc& ba)
 	{
 		if (impl)
+		{
 			delete impl;
+		}
 		throw;
 	}
 }
@@ -93,7 +99,9 @@ Exception::Exception(const Exception &ex) throw()
 Exception::~Exception() throw()
 {
 	if (impl)
+	{
 		delete impl;
+	}
 }
 
 Exception& Exception::operator = (const Exception& ex) throw()

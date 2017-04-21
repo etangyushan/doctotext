@@ -52,8 +52,8 @@
 //some functions specific for this parser
 
 //converts hex char (2 bytes) to single char. Examples:
-//41 will be converted to single 'A'
-//30 will be converted to '0'
+//0x41 will be converted to single 'A'
+//0x30 will be converted to '0'
 static unsigned char hex_char_to_single_char(const char* hex_char)
 {
 	//first four bits
@@ -905,18 +905,18 @@ struct PDFParser::Implementation
 
 			enum OperatorTypes
 			{
-				Tj,
-				TJ,
-				Td,
+				Tj, //直接类型内容的标识
+				TJ, //cid内容标识
+				Td, //Td 和 Tm 决定是否换行
 				TD,
 				T_star,
-				Tm,
+				Tm, //Td 和 Tm 决定是否换行
 				double_quote,
 				quote,
 				TL,
-				BT,
-				ET,
-				Tf,
+				BT, //文本块开始标识
+				ET, //文本块结束标识
+				Tf, //字体名称标识
 				TZ,
 				cm,
 				q,
@@ -925,7 +925,7 @@ struct PDFParser::Implementation
 				Tw,
 				Ts,
 				#warning TODO: Add support for operator "Do".
-				Do,
+				Do, //存储在 resource 中的 cid 内容标识
 				usecmap,
 				begincidrange,
 				endcidrange,
@@ -1182,7 +1182,9 @@ struct PDFParser::Implementation
 					{
 						std::map<std::string, PDFObject*>::iterator it = m_objects.find(key);
 						if (it == m_objects.end())
+						{
 							return NULL;
+						}
 						return it->second->getDictionary();
 					}
 
@@ -1190,7 +1192,9 @@ struct PDFParser::Implementation
 					{
 						std::map<std::string, PDFObject*>::iterator it = m_objects.find(key);
 						if (it == m_objects.end())
+						{
 							return NULL;
+						}
 						return it->second->getBoolean();
 					}
 
@@ -1311,7 +1315,9 @@ struct PDFParser::Implementation
 					{
 						std::map<std::string, PDFObject*>::iterator it = m_objects.find(key);
 						if (it == m_objects.end())
+						{
 							return NULL;
+						}
 						return it->second->getStream();
 					}
 
@@ -2367,6 +2373,7 @@ struct PDFParser::Implementation
 								throw Exception("PDF Stream iterator: invalid hex string, could not found '>' character");
 							}
 
+							//literral 内容
 							void readLiteralString(Pointer& ptr)
 							{
 								char ch = 0, prev;
@@ -2380,15 +2387,21 @@ struct PDFParser::Implementation
 										case '(':
 										{
 											if (prev != '\\')
+											{
 												++count;
+											}
 											break;
 										}
 										case ')':
 										{
 											if (prev != '\\')
+											{
 												--count;
+											}
 											if (count == -1)	//we have reached closing ')'
+											{
 												return;
+											}
 											break;
 										}
 										case '\\':
@@ -3431,9 +3444,10 @@ struct PDFParser::Implementation
 
 			class PDFReferenceCall : public PDFObject
 			{
+				//例如:xxx 0 R
 				public:
-					size_t m_index;
-					size_t m_generation;
+					size_t m_index;       //对象号:xxx
+					size_t m_generation;  //产生号:一般为0
 					PDFObject* m_object;
 					PDFReader* m_reader;
 
@@ -3640,13 +3654,26 @@ struct PDFParser::Implementation
 			{
 				m_root_ref = new PDFReferenceCall(*this);
 				m_info_ref = new PDFReferenceCall(*this);
+
+				//获取所有的交叉引用表
 				readReferenceData();
 				if (m_got_info)
+				{
 					m_info = m_info_ref->getDictionary();
+				}
+
+				//得到 Root 信息，从树形结构的根开始解析
 				if (m_got_root)
+				{
 					m_root_dictionary = m_root_ref->getDictionary();
+				}
+
 				if (!m_root_dictionary)
+				{
 					throw Exception("Root dictionary is missing!");
+				}
+
+				//获取属性的对象
 				m_metadata = m_root_dictionary->getObjAsStream("Metadata");
 			}
 
@@ -3669,7 +3696,9 @@ struct PDFParser::Implementation
 						{
 							ch = m_data_stream->getc();
 							if (ch != 10)
+							{
 								m_data_stream->unGetc(ch);
+							}
 							return;
 						}
 						case '%':
@@ -4695,18 +4724,23 @@ struct PDFParser::Implementation
 				}
 			}
 
+			//间接对象: xx 0 R
 			PDFObject* readIndirectObject(size_t index)
 			{
 				if (index >= m_references.size())
+				{
 					throw Exception("PDF Reader: Cannot read indirect object. Size of the table: " + uint_to_string(m_references.size())
 									+ ", index: " + uint_to_string(index));
+				}
 				ReferenceInfo* reference_info = &m_references[index];
 				try
 				{
 					if (reference_info->m_object)
 					{
 						if (reference_info->m_object->m_object)
+						{
 							return reference_info->m_object->m_object;
+						}
 					}
 					else
 					{
@@ -4714,20 +4748,28 @@ struct PDFParser::Implementation
 						reference_info->m_object->m_generation = reference_info->m_generation;
 						reference_info->m_object->m_index = index;
 					}
+
+					//分三类交叉引用表信息，free(不使用), compressed(压缩类型), in_use(使用中)
 					switch (reference_info->m_type)
 					{
 						case ReferenceInfo::free:
 						{
+							//不使用的直接废弃
 							reference_info->m_object->m_object = new PDFNull;
 							return reference_info->m_object->m_object;
 						}
 						case ReferenceInfo::compressed:	//in use, but compressed
 						{
+
 							//object is compressed in another stream, m_offset is an index here.
+							//对象是在另外一个压缩流中，m_offset 是压缩流的对象号索引值
 							if (reference_info->m_offset >= m_references.size())
+							{
 								throw Exception("PDF Reader: Cannot read compressed object. Size of the table: "
 												+ uint_to_string(m_references.size()) + ", index: "
 												+ uint_to_string(reference_info->m_offset));
+							}
+
 							ReferenceInfo* object_stream_reference = &m_references[reference_info->m_offset];
 							if (!object_stream_reference->m_object)
 							{
@@ -4739,16 +4781,21 @@ struct PDFParser::Implementation
 							try
 							{
 								if (!object_stream_reference->m_object->m_object)
+								{
 									object_stream_reference->m_object->m_object = readIndirectObject(object_stream_reference->m_object->m_index);
+								}
 								object_stream = object_stream_reference->m_object->getStream();
 								if (!object_stream)
+								{
 									throw Exception("Object stream does not exist");
+								}
 							}
 							catch (Exception& ex)
 							{
 								ex.appendError("PDF Reader: Cannot read stream with compressed objects");
 								throw;
 							}
+
 							//generation is an index in compressed object.
 							try
 							{
@@ -4969,6 +5016,7 @@ struct PDFParser::Implementation
 			}
 
 		private:
+			//获取所有的交叉引用表
 			void readReferenceData()
 			{
 				try
@@ -5019,9 +5067,9 @@ struct PDFParser::Implementation
 							throw Exception("PDF Reader: Unexpected end of buffer");
 						}
 
-						//有 xref 关键字的是明文存储的交叉引用表
 						if (ch == 'x')	//xref line
 						{
+							//有 xref 关键字的是明文存储的交叉引用表
 							//xref table
 							std::string line;
 							readLine(line);
@@ -5034,17 +5082,25 @@ struct PDFParser::Implementation
 							readXrefTable();
 
 							m_trailer_dict.clearDictionary();
+
+							//读取 trailer dictionary 信息，从这里我们可以获取 Root 的对象号
 							readDictionary(m_trailer_dict);
+
+							//Root 对象可能出现多次，但是值是一定的
 							if (!m_got_root && m_trailer_dict.getObjAsReferenceCall("Root"))
 							{
 								m_got_root = true;
 								*m_root_ref = *m_trailer_dict.getObjAsReferenceCall("Root");
 							}
+
+							//Root 对象可能出现多次，但是值是一定的
 							if (!m_got_info && m_trailer_dict.getObjAsReferenceCall("Info"))
 							{
 								m_got_info = true;
 								*m_info_ref = *m_trailer_dict.getObjAsReferenceCall("Info");
 							}
+
+							//压缩类型的交叉引用表的偏移量标识
 							PDFNumericInteger* xref_stm = m_trailer_dict.getObjAsNumericInteger("XRefStm");
 							if (xref_stm)
 							{
@@ -5053,6 +5109,7 @@ struct PDFParser::Implementation
 							}
 							else
 							{
+								//明文类型的交叉引用表的偏移量标识
 								PDFNumericInteger* prev = m_trailer_dict.getObjAsNumericInteger("Prev");
 								if (prev)
 								{
@@ -5071,6 +5128,7 @@ struct PDFParser::Implementation
 						}
 						else
 						{
+							//没有 xref 关键字的是压缩类型存储的交叉引用表
 							//xref stream
 							m_data_stream->unGetc(ch);
 							PDFNumericInteger* num_index = readNumeric()->getNumericInteger();
@@ -5093,7 +5151,9 @@ struct PDFParser::Implementation
 							{
 								throw Exception("PDF Reader: Invalid XRef stream");
 							}
+							//压缩类型的交叉引用表
 							readXRefStream(*xref_stream);
+
 							if (!m_got_root && xref_stream->m_dictionary->getObjAsReferenceCall("Root"))
 							{
 								m_got_root = true;
@@ -5104,6 +5164,8 @@ struct PDFParser::Implementation
 								m_got_info = true;
 								*m_info_ref = *xref_stream->m_dictionary->getObjAsReferenceCall("Info");
 							}
+
+							//获取另外部分的压缩类型的交叉引用表的偏移量
 							PDFNumericInteger* prev = NULL;
 							if (backward_compatibility)
 							{
@@ -5113,6 +5175,7 @@ struct PDFParser::Implementation
 							{
 								prev = xref_stream->m_dictionary->getObjAsNumericInteger("Prev");
 							}
+
 							if (prev)
 							{
 								xref_data_position = (*prev)();
@@ -5121,6 +5184,7 @@ struct PDFParser::Implementation
 							{
 								return;	//no more cross reference data
 							}
+
 							if (start_xref_positions.find(xref_data_position) != start_xref_positions.end())
 							{
 								return;
@@ -5226,6 +5290,7 @@ struct PDFParser::Implementation
 				}
 			}
 
+			//解析压缩类型的交叉引用表
 			void readXRefStream(PDFStream& stream)
 			{
 				try
@@ -5234,10 +5299,25 @@ struct PDFParser::Implementation
 					std::vector<int> start_positions;
 					std::vector<int> sizes;
 					size_t w_sizes[3];
+
+					/*
+					 * 交叉引用表中的对象个数，这里一次可能存储不完，所以后面可能会有个Prev关键字，
+					 * 也是记录一个压缩的交叉引用表，两个的对象总数就是 Size 的值
+					 */
 					PDFNumericInteger* num_size = stream.m_dictionary->getObjAsNumericInteger("Size");
 					if (!num_size)
+					{
 						throw Exception("PDF Reader: No Size entry in XRef stream");
+					}
 					size_t size = (*num_size)();
+
+					/* Index:交叉引用流中的对象数组，存储 Pdf_pairnum 结构信息
+					 *      形式如 [a1 a2 a3 a4 ...] ，
+					 *       每两个数字为一组，
+					 *       例如: a1 a2
+					 *       a1为首对象号，a2为该组的行数（即对象个数）
+					 *       等价于明文的交叉引用表 xref 每组开始行的两个数字
+					 */
 					PDFArray* index_array = stream.m_dictionary->getObjAsArray("Index");
 					if (index_array)
 					{
@@ -5263,32 +5343,51 @@ struct PDFParser::Implementation
 						start_positions.push_back(0);
 						sizes.push_back(size);
 					}
+
 					if (sizes.size() != start_positions.size())
+					{
 						throw Exception("PDF Reader: \"Index\" entry in cross reference stream is invalid");
+					}
+
+					/*
+					 * W 标识读取交叉引用表时，三个域长度格式，
+					 * 例如 [1 2 1]，读取的时候，1字节 2字节 1字节
+					 *     [1 3 2], 读取的时候，1字节 3字节 2字节
+					 */
 					PDFArray* w_array = stream.m_dictionary->getObjAsArray("W");
 					if (!w_array || w_array->Size() != 3)
+					{
 						throw Exception("PDF Reader: Reference stream hasnt got \"W\" entry or this entry is invalid");
+					}
+
 					for (int i = 0; i < 3; ++i)
 					{
 						PDFNumericInteger* element = w_array->getObjAsNumericInteger(i);
 						if (!element)
+						{
 							throw Exception("PDF Reader: \"W\" entry is invalid");
+						}
 						w_sizes[i] = (*element)();
 					}
+
 					ReferenceInfo* reference;
 					PDFStream::PDFStreamIterator iterator = stream.getIterator();
 					iterator.backToRoot();
 					const unsigned char* data = (const unsigned char*)iterator.getData() + 1;	//skip '[' character
 					size_t record_size = w_sizes[0] + w_sizes[1] + w_sizes[2];
 					if (iterator.getDataLength() - 2 < record_size * entries_count)
+					{
 						throw Exception("PDF Reader: XRef stream is too short, does not contain all declared entries");
+					}
 					size_t read_index = 0;
 					for (size_t i = 0; i < sizes.size(); ++i)
 					{
 						size_t elements_count = sizes[i];
 						size_t element_start = start_positions[i];
 						if (element_start + elements_count > m_references.size())
+						{
 							m_references.resize(element_start + elements_count);
+						}
 						for (size_t j = 0; j < elements_count; ++j)
 						{
 							reference = &m_references[element_start + j];
@@ -5307,7 +5406,9 @@ struct PDFParser::Implementation
 									++read_index;
 								}
 								else
+								{
 									reference->m_type = (ReferenceInfo::ReferenceType)(data[read_index++]);	//0 -> free, 1 -> in_ise, 2 -> compressed
+								}
 							}
 							reference->m_offset = 0;
 							for (int k = 0; k < w_sizes[1]; ++k)
@@ -6527,10 +6628,24 @@ struct PDFParser::Implementation
 				}
 			}
 
+			/*
+			 * 文本矩阵：Tm
+			 * 6个参数：
+			 * [X1 0 0 X2 X3 X4]
+			 * X1：字体宽度
+			 * X2：字体高度
+			 * X3：水平位置
+			 * X4：垂直位置
+			 *
+			 * 例： 1 0 0 1 368.35 758.28 Tm
+			 *
+			 */
 			void executeTm(std::vector<double>& args)
 			{
 				for (int i = 0; i < 6; ++i)
+				{
 					m_current_state.m_matrix[i] = args[i];
+				}
 				m_current_state.m_line_matrix[0] = 0.0;
 				m_current_state.m_line_matrix[1] = 0.0;
 			}
@@ -6616,6 +6731,15 @@ struct PDFParser::Implementation
 				m_current_state.m_ctm[5] += tmp[1] * args[4] + tmp[3] * args[5];
 			}
 
+			/*
+			 * 文本对象
+			 * BT 文本开始
+			 * 	字体信息
+			 * 	位置信息
+			 * 	。。。
+			 * 	格式信息
+			 * ET 文本结束
+			 */
 			void executeBT()
 			{
 				m_current_state.m_matrix[0] = 1.0;
@@ -6628,10 +6752,13 @@ struct PDFParser::Implementation
 				m_current_state.m_line_matrix[1] = 0.0;
 			}
 
+			//内容是 cid 编码信息
 			void executeTJ(std::vector<TJArrayElement>& tj_array)
 			{
 				if (!m_font)
+				{
 					return;
+				}
 				double tmp_matrix[6], cid_matrix[6];
 				cid_matrix[0] = tmp_matrix[0] = m_current_state.m_ctm[0] * m_current_state.m_matrix[0] + m_current_state.m_ctm[2] * m_current_state.m_matrix[1];
 				cid_matrix[1] = tmp_matrix[1] = m_current_state.m_ctm[1] * m_current_state.m_matrix[0] + m_current_state.m_ctm[3] * m_current_state.m_matrix[1];
@@ -6671,9 +6798,13 @@ struct PDFParser::Implementation
 						{
 							unsigned int cid = m_font->getNextCIDandDecode(output);
 							if (i == tj_array.size() - 1 && !m_font->hasNextCid())
+							{
 								last = true;
+							}
 							if (add_charspace)
+							{
 								m_current_state.m_line_matrix[0] += char_space;
+							}
 
 							//update matrix for cid
 							cid_matrix[4] = tmp_matrix[4] + tmp_matrix[0] * m_current_state.m_line_matrix[0] + tmp_matrix[2] * m_current_state.m_line_matrix[1];
@@ -6697,13 +6828,21 @@ struct PDFParser::Implementation
 								first = false;
 							}
 							if (last)
+							{
 								str_width = x0 > x1 ? x0 - x_pos : x1 - x_pos;
+							}
 							if (abs(y1 - y0) > str_height)
+							{
 								str_height = abs(y1 - y0);
+							}
 							if (y_pos > y1)
+							{
 								y_pos = y1;
+							}
 							if (y_pos > y0)
+							{
 								y_pos = y0;
+							}
 
 							m_current_state.m_line_matrix[0] += advance;
 							if (output.length() > 0 && output[output.length() - 1] == ' ')
@@ -6719,6 +6858,7 @@ struct PDFParser::Implementation
 				m_text_elements.insert(new_element);
 			}
 
+			//显示字符串
 			void executeTj(std::string& str)
 			{
 				std::vector<TJArrayElement> tj_array;
@@ -6727,7 +6867,9 @@ struct PDFParser::Implementation
 				tj_array[0].m_text = str;
 				executeTJ(tj_array);
 				if (!m_font)
+				{
 					return;
+				}
 			}
 
 			void getText(std::string& output)
@@ -6803,15 +6945,25 @@ struct PDFParser::Implementation
 	std::ostream* m_log_stream;
 	PDFContent m_pdf_content;
 
+	//获取字体信息（CMap）或者是 Do 的 cid 内容信息(现在没有实现Do)
 	void parseFonts()
 	{
+		/*
+		 * page 的字体信息，多个也的字体名称可能相同，但是字体名称对应的对象号有可能不同，
+		 * 所以每个 page 有自己单独的字体集合
+		 */
 		for (size_t i = 0; i < m_pdf_content.m_pages_resources.size(); ++i)
 		{
 			m_pdf_content.m_fonts_for_pages.push_back(PDFContent::FontsByNames());
 			PDFReader::PDFDictionary* res_dictionary = m_pdf_content.m_pages_resources[i];
 			if (!res_dictionary)
+			{
 				continue;
+			}
+
+			//获取字体的 dicctionary 信息：包含了 CMap 信息或者是 cid 内容信息(Do 的情况下)
 			PDFReader::PDFDictionary* fonts_dictionary = res_dictionary->getObjAsDictionary("Font");
+            //page 的字体集合
 			PDFContent::FontsByNames* fonts_for_page = &m_pdf_content.m_fonts_for_pages[i];
 			if (fonts_dictionary)
 			{
@@ -6819,32 +6971,53 @@ struct PDFParser::Implementation
 				std::map<std::string, PDFReader::PDFObject*>::iterator end = fonts_dictionary->m_objects.end();
 				while (it != end)
 				{
+					//字体名称
 					std::string font_code = it->first;
+
+					//根据字体名称，获取字体对象的信息: /Font <<>>
 					PDFReader::PDFDictionary* font_dictionary = fonts_dictionary->getObjAsDictionary(font_code);
 					if (font_dictionary)
 					{
 						PDFContent::Font* font = NULL;
+
+						//标识是一个新字体对象
 						bool is_new_font = false;
+
+						//确保不创建相同的字体对象到字体集合中
 						//make sure we wont create the same instance of Font twice.
 						try
 						{
+
+							//这里根据字体名称获取到间接对象:  例: /Font <</F1 3 0 R>> 中根据 F1 得到间接对象 3 0 R
 							PDFReader::PDFReferenceCall* font_dictionary_ref = fonts_dictionary->getObjAsReferenceCall(font_code);
 							if (font_dictionary_ref)
 							{
+								//查找字体对象是否已经存在字体集合中，find方法：找不到返回的迭代器的 end
 								if (m_pdf_content.m_fonts_by_indexes.find(font_dictionary_ref->m_index) == m_pdf_content.m_fonts_by_indexes.end())
 								{
+									//字体对象不在字体 map 中
 									is_new_font = true;
 									font = new PDFContent::Font;
 									font->m_font_dictionary = font_dictionary;
 									(*fonts_for_page)[font_code] = font;
+
+									//以对象号为索引值生成字体对象集合
 									m_pdf_content.m_fonts_by_indexes[font_dictionary_ref->m_index] = font;
 									m_pdf_content.m_fonts.push_back(font);
+
+//									std::cout << "font name is1:" + font_code << std::endl;
+//									std::cout << "m_index is1:" << font_dictionary_ref->m_index << std::endl;
 								}
 								else
+								{
+//									std::cout << "font name is2:" + font_code << std::endl;
 									(*fonts_for_page)[font_code] = m_pdf_content.m_fonts_by_indexes[font_dictionary_ref->m_index];
+								}
 							}
 							else
 							{
+                                //根据 Font 中的字体名称找不到对应的对象, 例: /Font <</F1 3 0 R /F3>> 有这种情况？
+//								std::cout << "font name is3:" + font_code << std::endl;
 								is_new_font = true;
 								font = new PDFContent::Font;
 								font->m_font_dictionary = font_dictionary;
@@ -6855,13 +7028,16 @@ struct PDFParser::Implementation
 						catch (std::bad_alloc& ba)
 						{
 							if (font)
+							{
 								delete font;
+							}
 							font = NULL;
 							throw Exception("Bad alloc");
 						}
 
 						if (is_new_font)
 						{
+							//解析字体获取 CMap
 							getFontEncoding(*font);
 							getFontInfo(*font);
 						}
@@ -7013,12 +7189,15 @@ struct PDFParser::Implementation
 		}
 	}
 
+	//获取 CMap 信息
 	void getFontEncoding(PDFContent::Font& font)
 	{
 		//Check if this font contain "ToUnicode" stream.
 		PDFReader::PDFStream* to_unicode_stream = font.m_font_dictionary->getObjAsStream("ToUnicode");
 		if (to_unicode_stream)
+		{
 			parseCMap(to_unicode_stream->getIterator(), font.m_cmap);
+		}
 		//check if "Encoding" is defined. It can be a name...
 		PDFReader::PDFName* encoding_name = font.m_font_dictionary->getObjAsName("Encoding");
 		if (encoding_name)
@@ -7276,6 +7455,7 @@ struct PDFParser::Implementation
 		}
 	}
 
+	//解析 CMap 信息，生成一个字体数
 	void parseCMap(PDFReader::PDFStream::PDFStreamIterator& iterator, PDFContent::CMap& cmap)
 	{
 		iterator.backToRoot();
@@ -7420,26 +7600,39 @@ struct PDFParser::Implementation
 		cmap.m_ready = true;
 	}
 
+	//获取 Pages 树形结构
 	void parsePagesTree(PDFReader& pdf_reader)
 	{
 		PDFReader::PDFDictionary* root_dictionary = pdf_reader.m_root_dictionary;
 		PDFReader::PDFDictionary* pages_dictionary = root_dictionary->getObjAsDictionary("Pages");
 		if (!pages_dictionary)
+		{
 			throw Exception("Root dictionary: missing Pages dictionary");
+		}
+
+		//解析各个 page 内容
 		parsePageNode(*pages_dictionary, NULL);
 	}
 
+	//解析各个 page 内容
 	void parsePageNode(PDFReader::PDFDictionary& page_node_dictionary, PDFReader::PDFDictionary* resources_dictionary)
 	{
+		// Resources 中包含了 cmap 字体信息
 		//check resources
 		PDFReader::PDFDictionary* overrided_resources = page_node_dictionary.getObjAsDictionary("Resources");
 		if (overrided_resources)
+		{
 			resources_dictionary = overrided_resources;
+		}
+
 		PDFReader::PDFName* type = page_node_dictionary.getObjAsName("Type");
 		if (!type)
+		{
 			throw Exception("Error while parsing page node: missing Type entry");
+		}
 		if ((*type)() == "Pages")	//another node with childs
 		{
+			// 从 Pages 获取的有能是其他的多个 Pages，这样就需要递归到树形结构的下一层，得到 Page
 			PDFReader::PDFArray* array = page_node_dictionary.getObjAsArray("Kids");
 			if (array)
 			{
@@ -7447,36 +7640,49 @@ struct PDFParser::Implementation
 				{
 					PDFReader::PDFDictionary* child = array->getObjAsDictionary(i);
 					if (child)
+					{
 						parsePageNode(*child, resources_dictionary);
+					}
 				}
 			}
 		}
 		else	//page object without any childs (so this is a page)
 		{
+			// page 对象是没有子节点的
 			m_pdf_content.m_pages.push_back(&page_node_dictionary);
 			m_pdf_content.m_pages_resources.push_back(resources_dictionary);
 		}
 	}
 
+	//获取文本内容
 	void parseText(std::string& text)
 	{
 		for (size_t i = 0; i < m_pdf_content.m_pages.size(); ++i)
 		{
 			try
 			{
+				//当前 page 的字体信息
 				PDFContent::FontsByNames* fonts_for_page = &m_pdf_content.m_fonts_for_pages[i];
 				std::vector<PDFReader::PDFStream*> contents;
 
 				PDFReader::PDFDictionary* page_obj = m_pdf_content.m_pages[i];
+				//cid内容标识关键字: Contents
 				PDFReader::PDFArray* page_contents_array = page_obj->getObjAsArray("Contents");
 				if (page_contents_array)
 				{
+					//是一个cid内容数组对象
 					for (size_t j = 0; j < page_contents_array->Size(); ++j)
+					{
 						contents.push_back(page_contents_array->getObjAsStream(j));
+					}
 				}
 				else
+				{
+					//直接就是cid内容信息
 					contents.push_back(page_obj->getObjAsStream("Contents"));
+				}
 
+				//解析 cid 内容，获取cid编码信息
 				PDFContent::PageText page_text;
 				for (size_t j = 0; j < contents.size(); ++j)
 				{
@@ -7511,35 +7717,45 @@ struct PDFParser::Implementation
 										case PDFReader::Tm:
 										{
 											if (!in_text || last_numbers.size() < 6)
+											{
 												break;
+											}
 											page_text.executeTm(last_numbers);
 											break;
 										}
 										case PDFReader::Td:
 										{
 											if (!in_text || last_numbers.size() < 2)
+											{
 												break;
+											}
 											page_text.executeTd(last_numbers);
 											break;
 										}
 										case PDFReader::T_star:
 										{
 											if (!in_text)
+											{
 												break;
+											}
 											page_text.executeTstar();
 											break;
 										}
 										case PDFReader::TD:
 										{
 											if (!in_text || last_numbers.size() < 2)
+											{
 												break;
+											}
 											page_text.executeTD(last_numbers);
 											break;
 										}
 										case PDFReader::TJ:
 										{
 											if (!in_text)
+											{
 												break;
+											}
 											page_text.executeTJ(tj_array);
 											tj_array.clear();
 											break;
@@ -7547,51 +7763,67 @@ struct PDFParser::Implementation
 										case PDFReader::Tj:
 										{
 											if (!in_text)
+											{
 												break;
+											}
 											page_text.executeTj(last_string);
 											break;
 										}
 										case PDFReader::Tw:
 										{
 											if (!in_text || last_numbers.size() < 1)
+											{
 												break;
+											}
 											page_text.executeTw(last_numbers);
 											break;
 										}
 										case PDFReader::Tc:
 										{
 											if (!in_text || last_numbers.size() < 1)
+											{
 												break;
+											}
 											page_text.executeTc(last_numbers);
 											break;
 										}
 										case PDFReader::Ts:
 										{
 											if (!in_text || last_numbers.size() < 1)
+											{
 												break;
+											}
 											page_text.executeTs(last_numbers);
 											break;
 										}
 										case PDFReader::quote:
 										{
 											if (!in_text)
+											{
 												break;
+											}
 											page_text.executeQuote(last_string);
 											break;
 										}
 										case PDFReader::double_quote:
 										{
 											if (!in_text || last_numbers.size() < 2)
+											{
 												break;
+											}
 											page_text.executeDoubleQuote(last_string, last_numbers);
 											break;
 										}
 										case PDFReader::Tf:
 										{
 											if (!in_text && last_numbers.size() < 1)
+											{
 												break;
+											}
 											if (fonts_for_page->find(last_name) != fonts_for_page->end())
+											{
 												page_text.executeTf(last_numbers, *(*fonts_for_page)[last_name]);
+											}
 											break;
 										}
 										case PDFReader::BT:
@@ -7638,7 +7870,9 @@ struct PDFParser::Implementation
 								case PDFReader::string:
 								{
 									if (in_text)
+									{
 										iterator.toHexString(last_string);
+									}
 									break;
 								}
 								case PDFReader::array:
@@ -7670,7 +7904,9 @@ struct PDFParser::Implementation
 								case PDFReader::name:
 								{
 									if (in_text)
+									{
 										last_name = std::string(iterator.getData() + 1, iterator.getDataLength() - 1);
+									}
 									break;
 								}
 								case PDFReader::int_numeric:
@@ -7721,7 +7957,9 @@ struct PDFParser::Implementation
 				int offset = 0;
 				std::string creation_date_str = (*creation_date)();
 				while (creation_date_str.length() > offset && (creation_date_str[offset] < '0' || creation_date_str[offset] > '9'))
+				{
 					++offset;
+				}
 				creation_date_str.erase(0, offset);
 				parsePDFDate(creation_date_tm, creation_date_str);
 				metadata.setCreationDate(creation_date_tm);
@@ -7735,12 +7973,15 @@ struct PDFParser::Implementation
 				int offset = 0;
 				std::string mod_date_str = (*modify_date)();
 				while (mod_date_str.length() > offset && (mod_date_str[offset] < '0' || mod_date_str[offset] > '9'))
+				{
 					++offset;
+				}
 				mod_date_str.erase(0, offset);
 				parsePDFDate(modify_date_tm, mod_date_str);
 				metadata.setLastModificationDate(modify_date_tm);
 			}
 		}
+
 		if (!got_author || !got_creation_date || !got_modify_date)
 		{
 			PDFReader::PDFStream* metadata_stream = pdf_reader.m_metadata;
@@ -7756,7 +7997,9 @@ struct PDFParser::Implementation
 						pos += 7;
 						std::string author;
 						while (pos < content.length() && content[pos] != '\"' && content[pos] != '\'' && content[pos] != '<')
+						{
 							author += content[pos];
+						}
 						metadata.setAuthor(author);
 					}
 				}
@@ -7769,16 +8012,22 @@ struct PDFParser::Implementation
 						entry_len = 10;
 					}
 					else
+					{
 						entry_len = 12;
+					}
 					if (pos != std::string::npos)
 					{
 						pos += entry_len;
 						std::string creation_date;
 						while (pos < content.length() && content[pos] != '\"' && content[pos] != '\'' && content[pos] != '<')
+						{
 							creation_date += content[pos];
+						}
 						tm creation_date_tm;
 						if (string_to_date(creation_date, creation_date_tm))
+						{
 							metadata.setCreationDate(creation_date_tm);
+						}
 					}
 				}
 				if (!got_modify_date)
@@ -7790,16 +8039,22 @@ struct PDFParser::Implementation
 						entry_len = 7;
 					}
 					else
+					{
 						entry_len = 10;
+					}
 					if (pos != std::string::npos)
 					{
 						pos += entry_len;
 						std::string modify_date;
 						while (pos < content.length() && content[pos] != '\"' && content[pos] != '\'' && content[pos] != '<')
+						{
 							modify_date += content[pos];
+						}
 						tm modify_date_tm;
 						if (string_to_date(modify_date, modify_date_tm))
+						{
 							metadata.setLastModificationDate(modify_date_tm);
+						}
 					}
 				}
 			}
@@ -7856,7 +8111,9 @@ PDFParser::PDFParser(const char* buffer, size_t size)
 		if (impl)
 		{
 			if (impl->m_data_stream)
+			{
 				delete impl->m_data_stream;
+			}
 			delete impl;
 		}
 		throw;
@@ -7927,8 +8184,13 @@ std::string PDFParser::plainText(const FormattingStyle& formatting)
 	try
 	{
 		Implementation::PDFReader pdf_reader(impl->m_data_stream);
+		//获取 page 信息
 		impl->parsePagesTree(pdf_reader);
+
+		//获取字体信息
 		impl->parseFonts();
+
+		//获取文本内容
 		impl->parseText(text);
 	}
 	catch (std::bad_alloc& ba)

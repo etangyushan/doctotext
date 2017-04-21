@@ -50,19 +50,19 @@ STRIP = touch
 endif
 
 build: update_version version.h src doc/html
-	$(MAKE) -C 3rdparty htmlcxx
-	$(MAKE) -C 3rdparty wv2
-	$(MAKE) -C 3rdparty unzip
-	$(MAKE) -C 3rdparty aj16
-	$(MAKE) -C 3rdparty ak12
-	$(MAKE) -C 3rdparty ag15
-	$(MAKE) -C 3rdparty ac16
-	$(MAKE) -C 3rdparty ToUnicode
-	$(MAKE) -C 3rdparty libcharsetdetect
-	$(MAKE) -C 3rdparty mimetic
+	@#$(MAKE) -C 3rdparty htmlcxx
+	@#$(MAKE) -C 3rdparty wv2
+	@#$(MAKE) -C 3rdparty unzip
+	@#$(MAKE) -C 3rdparty aj16
+	@#$(MAKE) -C 3rdparty ak12
+	@#$(MAKE) -C 3rdparty ag15
+	@#$(MAKE) -C 3rdparty ac16
+	@#$(MAKE) -C 3rdparty ToUnicode
+	@#$(MAKE) -C 3rdparty libcharsetdetect
+	@#$(MAKE) -C 3rdparty mimetic
 ifeq ($(WIN),1)
-	$(MAKE) -C 3rdparty pthreads
-	$(MAKE) -C 3rdparty libxml2
+	@#$(MAKE) -C 3rdparty pthreads
+	@#$(MAKE) -C 3rdparty libxml2
 endif
 	$(MAKE) -C src
 	rm -rf build
