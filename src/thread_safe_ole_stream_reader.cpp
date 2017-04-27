@@ -125,10 +125,13 @@ size_t ThreadSafeOLEStreamReader::size() const
 	return impl->m_size;
 }
 
+//对 sector 流内容组合
 bool ThreadSafeOLEStreamReader::read(U8* buf, size_t length)
 {
 	if (!impl->m_valid)
+	{
 		return false;
+	}
 	uint64_t to_read = length;
 	uint64_t read_pos = 0;
 	if (to_read > impl->m_size - impl->m_position)

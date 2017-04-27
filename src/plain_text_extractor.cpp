@@ -328,9 +328,13 @@ struct PlainTextExtractor::Implementation
 	bool parseXLS(XLSParser& xls, std::string& text)
 	{
 		if (m_verbose_logging)
+		{
 			xls.setVerboseLogging(true);
+		}
 		if (m_log_stream != &std::cerr)
+		{
 			xls.setLogStream(*m_log_stream);
+		}
 		*m_log_stream << "Using XLS parser.\n";
 		text = xls.plainText(m_formatting_style);
 		m_links.clear();
@@ -659,35 +663,60 @@ void PlainTextExtractor::setManageXmlParser(bool manage)
 	impl->m_manage_xml_parser = manage;
 }
 
+//根据后缀获取文件类型
 PlainTextExtractor::ParserType PlainTextExtractor::parserTypeByFileExtension(const std::string& file_name)
 {
 	ParserType parser_type = PARSER_AUTO;
 	std::string ext = file_name.substr(file_name.find_last_of(".") + 1);
 	std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
 	if (ext == "rtf")
+	{
 		parser_type = PARSER_RTF;
+	}
 	else if (ext == "odt" || ext == "ods" || ext == "odp" || ext == "odg" || ext == "docx" || ext == "xlsx" || ext == "pptx" || ext == "ppsx")
+	{
 		parser_type = PARSER_ODF_OOXML;
+	}
 	else if (ext == "xls")
+	{
 		parser_type = PARSER_XLS;
+	}
 	else if (ext == "xlsb")
+	{
 		parser_type = PARSER_XLSB;
+	}
 	else if (ext == "doc")
+	{
 		parser_type = PARSER_DOC;
+	}
 	else if (ext == "ppt" || ext == "pps")
+	{
 		parser_type = PARSER_PPT;
+	}
 	else if (ext == "htm" || ext =="html")
+	{
 		parser_type = PARSER_HTML;
+	}
 	else if (ext == "pages" || ext == "key" || ext == "numbers")
+	{
 		parser_type = PARSER_IWORK;
+	}
 	else if (ext == "pdf")
+	{
 		parser_type = PARSER_PDF;
+	}
 	else if (ext == "txt" || ext == "text")
+	{
 		parser_type = PARSER_TXT;
+	}
 	else if (ext == "eml")
+	{
 		parser_type = PARSER_EML;
+	}
 	else if (ext == "fodp" || ext == "fodt" || ext == "fods" || ext == "fodg")
+	{
 		parser_type = PARSER_ODFXML;
+	}
 	return parser_type;
 }
 
@@ -696,6 +725,7 @@ PlainTextExtractor::ParserType PlainTextExtractor::parserTypeByFileExtension(con
 	return parserTypeByFileExtension(std::string(file_name));
 }
 
+//根据文件内容判断文件类型
 bool PlainTextExtractor::parserTypeByFileContent(const std::string& file_name, ParserType& parser_type)
 {
 	bool error = false;
@@ -703,70 +733,114 @@ bool PlainTextExtractor::parserTypeByFileContent(const std::string& file_name, P
 
 	RTFParser rtf(file_name);
 	if (impl->isRTF(rtf, error, parser_type))
+	{
 		return true;
+	}
 	else if (error)
+	{
 		return false;
+	}
 
 	ODFOOXMLParser odfooxml(file_name);
 	if (impl->isODFOOXML(odfooxml, error, parser_type))
+	{
 		return true;
+	}
 	else if (error)
+	{
 		return false;
+	}
 
 	XLSParser xls(file_name);
 	if (impl->isXLS(xls, error, parser_type))
+	{
 		return true;
+	}
 	else if (error)
+	{
 		return false;
+	}
 
 	DOCParser doc(file_name);
 	if (impl->isDOC(doc, error, parser_type))
+	{
 		return true;
+	}
 	else if (error)
+	{
 		return false;
+	}
 
 	PPTParser ppt(file_name);
 	if (impl->isPPT(ppt, error, parser_type))
+	{
 		return true;
+	}
 	else if (error)
+	{
 		return false;
+	}
 
 	//We have to check if file is EML before HTML, because HTML can be included inside EML.
 	EMLParser eml(file_name);
 	if (impl->isEML(eml, error, parser_type))
+	{
 		return true;
+	}
 	else if (error)
+	{
 		return false;
+	}
 
 	HTMLParser html(file_name);
 	if (impl->isHTML(html, error, parser_type))
+	{
 		return true;
+	}
 	else if (error)
+	{
 		return false;
+	}
 
 	IWorkParser iwork(file_name);
 	if (impl->isIWork(iwork, error, parser_type))
+	{
 		return true;
+	}
 	else if (error)
+	{
 		return false;
+	}
 
 	XLSBParser xlsb(file_name);
 	if (impl->isXLSB(xlsb, error, parser_type))
+	{
 		return true;
+	}
 	else if (error)
+	{
 		return false;
+	}
 
 	PDFParser pdf(file_name);
 	if (impl->isPDF(pdf, error, parser_type))
+	{
 		return true;
+	}
 	else if (error)
+	{
 		return false;
+	}
 
 	ODFXMLParser odfxml(file_name);
 	if (impl->isODFXML(odfxml, error, parser_type))
+	{
 		return true;
+	}
 	else if (error)
+	{
 		return false;
+	}
 
 	*impl->m_log_stream << "No maching parser found.\n";
 	return false;
@@ -960,6 +1034,7 @@ bool PlainTextExtractor::processFile(ParserType parser_type, bool fallback, cons
 		}
 		case PARSER_XLS:
 		{
+			//解析 ole 格式的 office excel 文件
 			XLSParser xls(file_name);
 			error = impl->parseXLS(xls, text);
 			break;

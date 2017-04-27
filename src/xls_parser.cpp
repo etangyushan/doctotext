@@ -220,13 +220,16 @@ struct XLSParser::Implementation
 		return formatXLSNumber(number, xf_index);
 	}
 
+	//获取 UnicodeString
 	std::string parseXLUnicodeString(std::vector<unsigned char>::const_iterator* src, std::vector<unsigned char>::const_iterator src_end, const std::vector<size_t>& record_sizes, size_t& record_index, size_t& record_pos)
 	{
 		if (record_pos >= record_sizes[record_index])
 		{
 			size_t diff = record_pos - record_sizes[record_index];
 			if (diff > 0)
+			{
 				*m_log_stream << "Warning: XLUnicodeString starts " << diff << " bytes past record boundary.\n";
+			}
 			record_pos = diff;
 			record_index++;
 		}
@@ -266,7 +269,9 @@ struct XLSParser::Implementation
 		if (flags & 0x08) // rich text
 		{
 			if (m_verbose_logging)
+			{
 				*m_log_stream << "Rich text flag enabled.\n";
+			}
 			if (src_end - *src < 2)
 			{
 				*m_log_stream << "Unexpected end of buffer.\n";
@@ -280,7 +285,9 @@ struct XLSParser::Implementation
 		if (flags & 0x04) // asian
 		{
 			if (m_verbose_logging)
+			{
 				*m_log_stream << "Asian flag enabled.\n";
+			}
 			if (src_end - *src < 4)
 			{
 				*m_log_stream << "Unexpected end of buffer.\n";
@@ -292,7 +299,9 @@ struct XLSParser::Implementation
 			record_pos += 4;
 		}
 		if (m_verbose_logging && after_text_block_len > 0)
+		{
 			*m_log_stream << "Additional formatting blocks found, size " << after_text_block_len << " bytes.\n";
+		}
 		std::string dest;
 		std::vector<unsigned char>::const_iterator s = *src;
 		int char_count = 0;
@@ -305,11 +314,15 @@ struct XLSParser::Implementation
 				return dest;
 			}
 			if (record_pos > record_sizes[record_index])
+			{
 				*m_log_stream << "Warning: record boundary crossed.\n";
+			}
 			if (record_pos == record_sizes[record_index])
 			{
 				if (m_verbose_logging)
+				{
 					*m_log_stream << "Record boundary reached.\n";
+				}
 				record_index++;
 				record_pos = 0;
 				// At the beginning of each CONTINUE record the option flags byte is repeated.
@@ -323,7 +336,9 @@ struct XLSParser::Implementation
 					return dest;
 				}
 				if ((*s) != 0 && (*s) != 1)
+				{
 					*m_log_stream << "Incorrect XLUnicodeString flag.\n";
+				}
 				char_size = ((*s) & 0x01) ? 2 : 1;
 				if (char_size == 2)
 				{
@@ -344,7 +359,9 @@ struct XLSParser::Implementation
 				unsigned int uc = getU16LittleEndian(s);
 				#warning TODO: Find explanation (documentation) of NULL characters (OO skips them).
 				if (uc == 0)
+				{
 					continue;
+				}
 				if (utf16_unichar_has_4_bytes(uc))
 				{
 					record_pos += 2;
@@ -375,7 +392,9 @@ struct XLSParser::Implementation
 					dest += ustring_to_string(tc.convert(c2));
 				}
 				else
+				{
 					dest += c2;
+				}
 				char_count++;
 			}
 		}
@@ -384,16 +403,21 @@ struct XLSParser::Implementation
 		return dest;
 	}
 
+	//获取共享字符串
 	void parseSharedStringTable(const std::vector<unsigned char>& sst_buf)
 	{
 		if (m_verbose_logging)
+		{
 			*m_log_stream << "Parsing shared string table.\n";
+		}
 		int sst_size = getS32LittleEndian(sst_buf.begin() + 4);
 		std::vector<unsigned char>::const_iterator src = sst_buf.begin() + 8;
 		size_t record_index = 0;
 		size_t record_pos = 8;
 		while (src < sst_buf.end() && m_shared_string_table.size() <= sst_size)
+		{
 			m_shared_string_table.push_back(parseXLUnicodeString(&src, sst_buf.end(), m_shared_string_table_record_sizes, record_index, record_pos));
+		}
 	}	
 
 	std::string cellText(int row, int col, const std::string& s)
@@ -406,7 +430,9 @@ struct XLSParser::Implementation
 			m_last_col = 0;
 		}
 		if (col > 0 && col <= m_last_col)
+		{
 			r += "\t";
+		}
 		while (col > m_last_col)
 		{
 			r += "\t";
@@ -416,12 +442,18 @@ struct XLSParser::Implementation
 		return r;
 	}
 
+	//解析 record 获取文件内容
 	bool processRecord(int rec_type, const std::vector<unsigned char>& rec, std::string& text)
 	{
 		if (m_verbose_logging)
+		{
 			*m_log_stream << std::hex << "record=0x" << rec_type << std::endl;
+		}
 		if (rec_type != XLS_CONTINUE && m_prev_rec_type == XLS_SST)
+		{
+			//共享字符串解析
 			parseSharedStringTable(m_shared_string_table_buf);
+		}
 		switch (rec_type)
 		{
 			case XLS_BLANK:
@@ -445,28 +477,40 @@ struct XLSParser::Implementation
 				{
 					int codepage = getU16LittleEndian(rec.begin());
 					if (codepage == 1200)
+					{
 						break;
+					}
 					else if (codepage == 367)
+					{
 						m_codepage = "ASCII";
+					}
 					else
+					{
 						m_codepage = "cp" + int2string(codepage);
+					}
 				}
 				break;
 			}
 			case XLS_CONTINUE:
 			{
 				if (m_prev_rec_type != XLS_SST)
+				{
 					return true; // do not change m_prev_rec_type
+				}
 				m_shared_string_table_buf.reserve(m_shared_string_table_buf.size() + rec.size());
 				m_shared_string_table_buf.insert(m_shared_string_table_buf.end(), rec.begin(), rec.begin() + rec.size());
 				m_shared_string_table_record_sizes.push_back(rec.size());
 				if (m_verbose_logging)
+				{
 					*m_log_stream << "XLS_CONTINUE record for XLS_SST found. Index: " << m_shared_string_table_record_sizes.size() - 1 << ", size:" << rec.size() << ".\n";
+				}
 				return true;
 			}
 			case XLS_DATE_1904:
+			{
 				m_date_shift = 24107.0; 
 				break;
+			}
 			case XLS_EOF:
 			{
 				text += "\n";
@@ -478,20 +522,30 @@ struct XLSParser::Implementation
 				*m_log_stream << "XLS file is encrypted.\n";
 				U16 encryption_type = getU16LittleEndian(rec.begin());
 				if (encryption_type == 0x0000)
+				{
 					*m_log_stream << "XOR obfuscation encryption type detected.\n";
+				}
 				else if (encryption_type == 0x0001)
 				{
 					*m_log_stream << "RC4 encryption type detected.\n";
 					U16 header_type = getU16LittleEndian(rec.begin() + 2);
 					if (header_type == 0x0001)
+					{
 						*m_log_stream << "RC4 encryption header found.\n";
+					}
 					else if (header_type == 0x0002 || header_type == 0x0003)
+					{
 						*m_log_stream << "RC4 CryptoAPI encryption header found.\n";
+					}
 					else
+					{
 						*m_log_stream << "Unknown RC4 encryption header.\n";
+					}
 				}
 				else
+				{
 					*m_log_stream << "Unknown encryption type.\n";
+				}
 				return false;
 			}
 			case XLS_FORMAT:
@@ -518,7 +572,9 @@ struct XLSParser::Implementation
 						text += (rec[8] ? "TRUE" : "FALSE");
 					}
 					else if (rec[6] == 2)
+					{
 						text += "ERROR";
+					}
 				}
 				else
 				{
@@ -558,8 +614,11 @@ struct XLSParser::Implementation
 				{
 					*m_log_stream << "Incorrect SST index.\n";
 					return false;
-				} else
+				}
+				else
+				{
 					text += cellText(row, col, m_shared_string_table[sst_index]);
+				}
 				break;
 			}
 			case XLS_MULBLANK:
@@ -568,7 +627,9 @@ struct XLSParser::Implementation
 				int start_col = getU16LittleEndian(rec.begin() + 2);
 				int end_col=getU16LittleEndian(rec.begin() + rec.size() - 2);
 				for (int c = start_col; c <= end_col; c++)
+				{
 					text += cellText(row, c, "");
+				}
 				break;
 			}
 			case XLS_MULRK:
@@ -634,13 +695,14 @@ struct XLSParser::Implementation
 				XFRecord xf_record;
 				xf_record.num_format_id = getU16LittleEndian(rec.begin() + 2);
 				m_xf_records.push_back(xf_record);
-					break;
+				break;
 			} 
 		}
 		m_prev_rec_type = rec_type;
 		return true;
 	}  
 
+	//解析低版本的 office-execl 文件
 	void parseXLS(ThreadSafeOLEStreamReader& reader, std::string& text)
 	{
 		m_xf_records.clear();
@@ -725,7 +787,9 @@ struct XLSParser::Implementation
 							if(biff_ver == 0x600)
 							{
 								if (m_verbose_logging)
+								{
 									*m_log_stream << "Detected BIFF8 version\n";
+								}
 								rec.resize(8);
 								read_status = reader.read(&*rec.begin(), 8);
 								m_biff_version = BIFF8;
@@ -734,7 +798,9 @@ struct XLSParser::Implementation
 							else
 							{
 								if (m_verbose_logging)
+								{
 									*m_log_stream << "Detected BIFF5 version\n";
+								}
 								m_biff_version = BIFF5;
 								bof_struct_size = 8;
 							}
@@ -742,19 +808,25 @@ struct XLSParser::Implementation
 						}
 						case BOF_BIFF_3:
 							if (m_verbose_logging)
+							{
 								*m_log_stream << "Detected BIFF3 version\n";
+							}
 							m_biff_version = BIFF3;
 							bof_struct_size = 6;
 							break;
 						case BOF_BIFF_4:
 							if (m_verbose_logging)
+							{
 								*m_log_stream << "Detected BIFF4 version\n";
+							}
 							m_biff_version = BIFF4;
 							bof_struct_size = 6;
 							break;
 						default:
 							if (m_verbose_logging)
+							{
 								*m_log_stream << "Detected BIFF2 version\n";
+							}
 							m_biff_version = BIFF2;
 							bof_struct_size = 4;
 					}
@@ -805,18 +877,30 @@ struct XLSParser::Implementation
 				read_status = reader.read(&*rec.begin(), rec_len);
 			}
 			else
+			{
 				rec.clear();
+			}
 			if (eof_rec_found)
 			{
 				if (rec_type != XLS_BOF)
+				{
 					break;
+				}
 			}
+
+			//解析 record
 			if (!processRecord(rec_type, rec, text))
+			{
 				return;
+			}
 			if (rec_type == XLS_EOF)
+			{
 				eof_rec_found = true;
+			}
 			else
+			{
 				eof_rec_found = false;	
+			}
 		}
 	}
 };
@@ -895,10 +979,17 @@ std::string XLSParser::plainText(const FormattingStyle& formatting)
 {
 	impl->m_error = false;
 	ThreadSafeOLEStorage* storage;
+
+	//获取 ole 基本信息
 	if (impl->m_buffer)
+	{
 		storage = new ThreadSafeOLEStorage(impl->m_buffer, impl->m_buffer_size);
+	}
 	else
+	{
 		storage = new ThreadSafeOLEStorage(impl->m_file_name);
+	}
+
 	if (!storage->isValid())
 	{
 		*impl->m_log_stream << "Error opening " << impl->m_file_name << " as OLE file.\n";
@@ -914,15 +1005,22 @@ std::string XLSParser::plainText(const FormattingStyle& formatting)
 std::string XLSParser::plainText(ThreadSafeOLEStorage& storage, const FormattingStyle& formatting)
 {
 	impl->m_error = false;
+
+	//根据 Workbook directory 或者是 Book directory 信息解析
 	ThreadSafeOLEStreamReader* reader = (ThreadSafeOLEStreamReader*)storage.createStreamReader("Workbook");
 	if (reader == NULL)
+	{
 		reader = (ThreadSafeOLEStreamReader*)storage.createStreamReader("Book");
+	}
+
 	if (reader == NULL)
 	{
 		*impl->m_log_stream << "Error opening " << impl->m_file_name << " as OLE file.\n";
 		impl->m_error = true;
 		return "";
 	}
+
+	//这两个都不存在就可能是更低版本的 office-execl
 	std::string text;
 	impl->parseXLS(*reader, text);
 	delete reader;

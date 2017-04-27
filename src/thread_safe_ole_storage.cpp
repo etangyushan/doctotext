@@ -48,17 +48,20 @@ struct ThreadSafeOLEStorage::Implementation
 	std::string m_error;
 	std::string m_file_name;
 	DataStream* m_data_stream;
-	uint16_t m_sector_size, m_mini_sector_size;
+	uint16_t m_sector_size;      //一个 sector 的大小
+	uint16_t m_mini_sector_size; //一个 short-sector 的大小
 	uint32_t m_number_of_directories;
-	uint16_t m_header_version;
-	uint32_t m_number_of_fat_sectors;
-	uint32_t m_first_sector_directory_location;
-	uint32_t m_first_mini_fat_sector_location;
-	uint32_t m_number_of_mini_fat_sectors;
-	uint32_t m_first_difat_sector_location;
-	uint32_t m_number_of_difat_sectors;
-	uint32_t m_mini_stream_cut_off;
-	uint16_t m_byte_order;
+	uint16_t m_header_version; //版本信息一般值为: 0x03
+	uint32_t m_number_of_fat_sectors; //secotr 总数
+	uint32_t m_first_sector_directory_location; //directory 的第一个 sectorID
+	uint32_t m_first_mini_fat_sector_location; //short-sector 的第一个 sectorID,-2为不存在
+	uint32_t m_number_of_mini_fat_sectors;     //short-sector 的 sector 总数
+	uint32_t m_first_difat_sector_location;    //master-sector 的第一个 sectorID,-2为没有附加 sector
+	uint32_t m_number_of_difat_sectors;        //master-sector 的 sector 总数
+	uint32_t m_mini_stream_cut_off; //标准流的最小大小，一般为4096字节
+	uint16_t m_byte_order; //字节序，确定是大端或者是小端
+	                       //FE H  FF H = Little-Endian
+						   //FF H  FE H = Big-Endian
 
 	std::vector<uint32_t> m_fat_sectors_chain;
 	std::vector<uint32_t> m_sectors_chain;
@@ -89,6 +92,7 @@ struct ThreadSafeOLEStorage::Implementation
 	std::vector<DirectoryEntry*> m_inside_directories;
 	bool m_child_directories_loaded;
 
+	//解析 ole 格式信息
 	Implementation(const std::string &file_name)
 	{
 		m_file_name = file_name;
@@ -102,10 +106,20 @@ struct ThreadSafeOLEStorage::Implementation
 			m_error = "File " + file_name + " cannot be open";
 		}
 		m_child_directories_loaded = false;
+
+		//获取 ole 格式的头信息
 		parseHeader();
+
+		//获取主的 sector 链表
 		getFatArraySectorChain();
+
+		//获取标准 sector 链表
 		getFatSectorChain();
+
+		//获取 short-sector 链表
 		getMiniFatSectorChain();
+
+		//获取 Directory 信息
 		getStoragesAndStreams();
 	}
 
@@ -246,10 +260,13 @@ struct ThreadSafeOLEStorage::Implementation
 		return true;
 	}
 
+	//获取目录信息
 	void getStoragesAndStreams()
 	{
 		if (!m_is_valid_ole)
+		{
 			return;
+		}
 		size_t records_count = m_sector_size / 4;
 		size_t directory_count_per_sector = m_sector_size / 128;
 		DirectoryEntry* directory = NULL;
@@ -280,18 +297,26 @@ struct ThreadSafeOLEStorage::Implementation
 					{
 						unsigned int ch = unichars[j];
 						if (ch == 0)
+						{
 							break;
+						}
 						if (utf16_unichar_has_4_bytes(ch))
 						{
 							if (++j < 32)
+							{
 								ch = (ch << 16) | unichars[j];
+							}
 							else
+							{
 								break;
+							}
 						}
 						directory->m_name += unichar_to_utf8(ch);
 					}
 					if (!skipBytes(2))
+					{
 						return;
+					}
 					uint8_t object_type;
 					if (!m_data_stream->read(&object_type, sizeof(uint8_t), 1))
 					{
@@ -339,7 +364,9 @@ struct ThreadSafeOLEStorage::Implementation
 						return;
 					}
 					if (!skipBytes(36))
+					{
 						return;
+					}
 					if (!m_data_stream->read(&directory->m_start_sector_location, sizeof(uint32_t), 1))
 					{
 						m_error = "Error in reading sector location";
@@ -361,7 +388,9 @@ struct ThreadSafeOLEStorage::Implementation
 				catch (std::bad_alloc& ba)
 				{
 					if (directory != NULL)
+					{
 						delete directory;
+					}
 					directory = NULL;
 					throw;
 				}
@@ -387,7 +416,9 @@ struct ThreadSafeOLEStorage::Implementation
 	void getMiniFatSectorChain()
 	{
 		if (!m_is_valid_ole)
+		{
 			return;
+		}
 		size_t records_count = m_sector_size / 4;
 		m_mini_sectors_chain.reserve(m_number_of_mini_fat_sectors * records_count);
 		size_t mini_sector_location = m_first_mini_fat_sector_location;
@@ -413,14 +444,19 @@ struct ThreadSafeOLEStorage::Implementation
 			}
 			mini_sector_location = m_sectors_chain[mini_sector_location];
 			if (mini_sector_location == 0xFFFFFFFE)
+			{
 				break;
+			}
 		}
 	}
 
+	//标准 sector 链表
 	void getFatSectorChain()
 	{
 		if (!m_is_valid_ole)
+		{
 			return;
+		}
 		size_t records_count = m_sector_size / 4;
 		m_sectors_chain.reserve(m_number_of_fat_sectors * records_count);
 		for (size_t i = 0; i < m_number_of_fat_sectors; ++i)
@@ -440,19 +476,28 @@ struct ThreadSafeOLEStorage::Implementation
 		}
 	}
 
+	//获取主的 sector 链表
 	void getFatArraySectorChain()
 	{
 		if (!m_is_valid_ole)
+		{
 			return;
+		}
 		uint32_t records_count = m_sector_size / 4 - 1;
 		m_fat_sectors_chain.reserve(m_number_of_fat_sectors);
+
+		//获取头中的前 109 个 sector
 		uint32_t remaining_fat_sector_chain_count = m_number_of_fat_sectors;
 		for (int i = 0; i < 109; ++i)
 		{
 			if (remaining_fat_sector_chain_count == 0)
+			{
 				break;
+			}
 			if (!getUint32(m_fat_sectors_chain[i]))
+			{
 				return;
+			}
 			--remaining_fat_sector_chain_count;
 		}
 		uint32_t difat_sector_location = m_first_difat_sector_location;
@@ -467,15 +512,23 @@ struct ThreadSafeOLEStorage::Implementation
 			for (uint32_t j = 0; j < records_count; ++j)
 			{
 				if (remaining_fat_sector_chain_count == 0)
+				{
 					break;
+				}
 				if (!getUint32(m_fat_sectors_chain[109 + i * records_count + j]))
+				{
 					return;
+				}
 				--remaining_fat_sector_chain_count;
 			}
 			if (!getUint32(difat_sector_location))
+			{
 				return;
+			}
 			if (difat_sector_location == 0xFFFFFFFE)
+			{
 				break;
+			}
 		}
 	}
 
@@ -512,12 +565,17 @@ struct ThreadSafeOLEStorage::Implementation
 		return true;
 	}
 
+	//ole 格式头信息(512字节)
 	void parseHeader()
 	{
 		uint8_t ole_header[] = {0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1};
 		uint8_t readed_ole_header[8];
 		if (!m_is_valid_ole)
+		{
 			return;
+		}
+
+		//确定是否是 ole 格式文件
 		if (!m_data_stream->read(readed_ole_header, sizeof(uint8_t), 8) ||
 				memcmp(readed_ole_header, ole_header, 8) != 0)
 		{
@@ -525,38 +583,71 @@ struct ThreadSafeOLEStorage::Implementation
 			m_error = "Header is invalid: no OLE signature";
 			return;
 		}
+
+		//无用信息
 		if (!skipBytes(18))
+		{
 			return;
+		}
+
 		if (!getUint16(m_header_version))
+		{
 			return;
+		}
 		if (!getUint16(m_byte_order))
+		{
 			return;
+		}
 		if (!getUint16(m_sector_size))
+		{
 			return;
+		}
 		m_sector_size = (uint16_t)pow(2, m_sector_size);
 		if (!getUint16(m_mini_sector_size))
+		{
 			return;
+		}
 		m_mini_sector_size = (uint16_t)pow(2, m_mini_sector_size);
 		if (!skipBytes(6))
+		{
 			return;
+		}
 		if (!getUint32(m_number_of_directories))
+		{
 			return;
+		}
 		if (!getUint32(m_number_of_fat_sectors))
+		{
 			return;
+		}
 		if (!getUint32(m_first_sector_directory_location))
+		{
 			return;
+		}
 		if (!skipBytes(4))
+		{
 			return;
+		}
 		if (!getUint32(m_mini_stream_cut_off))
+		{
 			return;
+		}
 		if (!getUint32(m_first_mini_fat_sector_location))
+		{
 			return;
+		}
 		if (!getUint32(m_number_of_mini_fat_sectors))
+		{
 			return;
+		}
 		if (!getUint32(m_first_difat_sector_location))
+		{
 			return;
+		}
 		if (!getUint32(m_number_of_difat_sectors))
+		{
 			return;
+		}
 	}
 };
 
